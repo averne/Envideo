@@ -1,0 +1,3 @@
+option('nvidia',  type: 'feature', value: 'disabled')
+option('nvgpu',   type: 'feature', value: 'disabled')
+option('tests',   type: 'boolean', value: false)
