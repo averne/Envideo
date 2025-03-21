@@ -499,14 +499,15 @@ int Device::wait(envid::Fence fence, std::uint64_t timeout_us) {
         if (this->poll_internal(fence))
             break;
 
-        auto rc = ::poll(&p, 1, timeout);
+        auto rc = ::poll(&p, 1, 100);
         if (rc < 0)
             return ENVIDEO_RC_SYSTEM(errno);
-        else if (rc == 0)
-            return ENVIDEO_RC_SYSTEM(ETIMEDOUT);
 
         timeout -= std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
         timeout  = std::max(timeout, INT64_C(0));
+
+        if (!timeout)
+            return ENVIDEO_RC_SYSTEM(ETIMEDOUT);
     }
 
     return 0;
