@@ -103,6 +103,9 @@ class Device final: public envid::Device {
         using channels_mask_type = std::uint64_t;
         constexpr static auto channel_mask_bitwidth = std::numeric_limits<Device::channels_mask_type>::digits;
 
+        constexpr static std::string_view ctl_dev  = "/dev/nvidiactl";
+        constexpr static std::string_view card_dev = "/dev/nvidia%d";
+
     public:
         static bool probe();
 
@@ -209,15 +212,13 @@ class Device final: public envid::Device {
         }
 
     public:
-        std::array<char, 32>           card_path  = {};
-        std::array<std::uint8_t, 0x10> card_uuid  = {};
-        std::vector<std::uint32_t>     classes    = {};
-        std::vector<std::uint32_t>     engines    = {};
-
+        std::array<char, 32> ctl_path = {}, card_path = {};
         int ctl_fd = 0, card_fd = 0;
 
-        Object root = {}, device       = {}, subdevice    = {},
-            vaspace = {}, pitch_ctxdma = {}, block_ctxdma = {};
+        std::vector<std::uint32_t> classes = {};
+        std::vector<std::uint32_t> engines = {};
+
+        Object root = {}, device = {}, subdevice = {}, vaspace = {};
         Map rusd, usermode, semaphores;
 
         int os_event_fd = 0;

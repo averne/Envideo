@@ -187,7 +187,7 @@ int Channel::initialize() {
         .bSkipSubmit = false,
     }));
 
-    auto work_token_params = NVC36F_CTRL_CMD_GPFIFO_GET_WORK_SUBMIT_TOKEN_PARAMS{};
+    NVC36F_CTRL_CMD_GPFIFO_GET_WORK_SUBMIT_TOKEN_PARAMS work_token_params = {};
     ENVID_CHECK(d.nvrm_control(this->gpfifo, NVC36F_CTRL_CMD_GPFIFO_GET_WORK_SUBMIT_TOKEN, work_token_params));
     this->submit_token = work_token_params.workSubmitToken;
 

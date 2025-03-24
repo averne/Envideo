@@ -195,13 +195,13 @@ int Device::nvrm_alloc(int fd, const Object &parent, Object &obj, std::uint32_t 
                        void *params, std::uint32_t params_size) const
 {
     NVOS64_PARAMETERS p = {
-        .hRoot            = this->root.handle,
-        .hObjectParent    = parent.handle,
-        .hObjectNew       = obj.handle,
-        .hClass           = cl,
-        .pAllocParms      = params,
-        .paramsSize       = params_size,
-        .flags            = 0,
+        .hRoot         = this->root.handle,
+        .hObjectParent = parent.handle,
+        .hObjectNew    = obj.handle,
+        .hClass        = cl,
+        .pAllocParms   = params,
+        .paramsSize    = params_size,
+        .flags         = 0,
     };
     ENVID_CHECK_RM(nvesc_iowr(fd, NV_ESC_RM_ALLOC, &p), p.status);
 
@@ -312,14 +312,14 @@ int Device::read_clocks(RUSD_CLK_PUBLIC_DOMAIN_INFOS &clk_info, bool update) con
 }
 
 void Device::kickoff(std::uint32_t token) const {
-    auto mmio      = reinterpret_cast<std::uintptr_t >(this->usermode.cpu_addr);
-    auto *doorbell = reinterpret_cast<std::uint32_t *>(mmio + NVC361_NOTIFY_CHANNEL_PENDING);
+    auto mmio = reinterpret_cast<std::uintptr_t >(this->usermode.cpu_addr);
+    volatile auto *doorbell = reinterpret_cast<std::uint32_t *>(mmio + NVC361_NOTIFY_CHANNEL_PENDING);
 
     *doorbell = token;
 }
 
 bool Device::probe() {
-    int fd = ::open("/dev/nvidiactl", O_RDWR | O_CLOEXEC);
+    int fd = ::open(Device::ctl_dev.data(), O_RDWR | O_CLOEXEC);
     if (fd < 0)
         return false;
 
@@ -334,7 +334,8 @@ bool Device::probe() {
 
 int Device::initialize() {
     // Open file interfaces
-    ENVID_CHECK_ERRNO(this->ctl_fd = ::open("/dev/nvidiactl", O_RDWR | O_CLOEXEC));
+    std::ranges::copy(Device::ctl_dev, this->ctl_path.data());
+    ENVID_CHECK_ERRNO(this->ctl_fd = ::open(this->ctl_path.data(), O_RDWR | O_CLOEXEC));
 
     // Find first available device minor number
     std::array<nv_ioctl_card_info_t, 32> card_info = {};
@@ -344,7 +345,7 @@ int Device::initialize() {
     if (info == card_info.end())
         return ENVIDEO_RC_SYSTEM(ENOSYS);
 
-    std::snprintf(this->card_path.data(), this->card_path.size(), "/dev/nvidia%d", info->minor_number);
+    std::snprintf(this->card_path.data(), this->card_path.size(), Device::card_dev.data(), info->minor_number);
     ENVID_CHECK_ERRNO(this->card_fd = ::open(this->card_path.data(), O_RDWR | O_CLOEXEC));
     ENVID_CHECK(nvesc_iowr(this->card_fd, NV_ESC_REGISTER_FD, &this->ctl_fd));
 
@@ -450,7 +451,7 @@ int Device::finalize() {
             .hDevice = this->device.handle,
             .fd      = static_cast<std::uint32_t>(this->os_event_fd),
         };
-        ENVID_CHECK_RM(nvesc_iowr(this->os_event_fd, NV_ESC_FREE_OS_EVENT, &p), p.Status);
+        nvesc_iowr(this->os_event_fd, NV_ESC_FREE_OS_EVENT, &p);
 
         ::close(this->os_event_fd);
     }
@@ -487,7 +488,7 @@ int Device::wait(envid::Fence fence, std::uint64_t timeout_us) {
         return ENVIDEO_RC_SYSTEM(EINVAL);
 
     // Convert to milliseconds
-    std::int64_t timeout = timeout_us /= 1000;
+    std::int64_t timeout = timeout_us / 1000;
 
     struct pollfd p = {
         .fd     = this->os_event_fd,
@@ -526,20 +527,20 @@ int Map::map_cpu(bool system) {
     auto &d = *reinterpret_cast<Device *>(this->device);
 
     int map_fd;
-    ENVID_CHECK_ERRNO(map_fd = ::open(system ? "/dev/nvidiactl" : d.card_path.data(), O_RDWR | O_CLOEXEC));
+    ENVID_CHECK_ERRNO(map_fd = ::open((system ? d.ctl_path : d.card_path).data(), O_RDWR | O_CLOEXEC));
     ENVID_SCOPEGUARD([&map_fd] { ::close(map_fd); });
 
     nv_ioctl_nvos33_parameters_with_fd p = {
-        .params              = {
-            .hClient         = d.root.handle,
-            .hDevice         = d.device.handle,
-            .hMemory         = this->object.handle,
-            .offset          = 0,
-            .length          = this->size,
-            .flags           = DRF_DEF(OS33, _FLAGS, _CACHING_TYPE, _DEFAULT) |
-                               DRF_DEF(OS33, _FLAGS, _MAPPING,      _DIRECT),
+        .params      = {
+            .hClient = d.root.handle,
+            .hDevice = d.device.handle,
+            .hMemory = this->object.handle,
+            .offset  = 0,
+            .length  = this->size,
+            .flags   = DRF_DEF(OS33, _FLAGS, _CACHING_TYPE, _DEFAULT) |
+                       DRF_DEF(OS33, _FLAGS, _MAPPING,      _DIRECT),
         },
-        .fd                  = map_fd,
+        .fd          = map_fd,
     };
     ENVID_CHECK_RM(nvesc_iowr(d.ctl_fd, NV_ESC_RM_MAP_MEMORY, &p), p.params.status);
 
@@ -567,7 +568,6 @@ int Map::unmap_cpu() {
             .hMemory        = this->object.handle,
             .pLinearAddress = NV_PTR_TO_NvP64(this->linear_address),
         };
-
         nvesc_iowr(d.ctl_fd, NV_ESC_RM_UNMAP_MEMORY, &p);
     }
 
@@ -660,10 +660,10 @@ int Map::initialize(void *address, std::size_t size, std::size_t align) {
     };
     ENVID_CHECK_RM(nvesc_iowr(d.ctl_fd, NV_ESC_RM_VID_HEAP_CONTROL, &p), p.status);
 
-    this->object   = { .handle = p.data.AllocOsDesc.hMemory, .parent = p.hObjectParent };
-    this->size     = size;
-    this->handle   = this->object.handle;
-    this->own_mem  = false;
+    this->object  = { .handle = p.data.AllocOsDesc.hMemory, .parent = p.hObjectParent };
+    this->size    = size;
+    this->handle  = this->object.handle;
+    this->own_mem = false;
 
     if (ENVIDEO_MAP_GET_CPU_FLAGS(this->flags) != EnvideoMap_CpuUnmapped)
         this->cpu_addr = address;
