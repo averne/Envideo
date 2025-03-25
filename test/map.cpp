@@ -38,7 +38,7 @@ TEST_F(MapTest, Basic) {
     EnvideoMap *map;
 
     auto size = 0x1000, align = 0x1000;
-    auto flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuCacheable | EnvideoMap_GpuCacheable | EnvideoMap_UsageGeneric);
+    auto flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuCacheable | EnvideoMap_GpuCacheable);
 
     EXPECT_EQ(envideo_map_create(dev, &map, size, align, flags), 0);
     EXPECT_NE(envideo_map_get_handle  (map), 0);
@@ -63,7 +63,7 @@ TEST_F(MapTest, FromVa) {
     EnvideoMap *map;
 
     auto size = 0x1000, align = 0x1000;
-    auto flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuWriteCombine | EnvideoMap_GpuCacheable | EnvideoMap_UsageGeneric);
+    auto flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuWriteCombine | EnvideoMap_GpuCacheable);
 
     auto *mem = new (std::align_val_t(align)) std::uint8_t[size];
 
@@ -86,7 +86,7 @@ TEST_F(MapTest, Realloc) {
     EnvideoMap *map;
 
     auto size = 0x1000, align = 0x1000;
-    auto flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuCacheable | EnvideoMap_GpuCacheable | EnvideoMap_UsageGeneric);
+    auto flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuCacheable | EnvideoMap_GpuCacheable);
 
     EXPECT_EQ(envideo_map_create(dev, &map, size, align, flags), 0);
 
@@ -103,7 +103,7 @@ TEST_F(MapTest, Cache) {
     EnvideoMap *map;
 
     auto size = 0x1000, align = 0x1000;
-    auto flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuCacheable | EnvideoMap_GpuCacheable | EnvideoMap_UsageGeneric);
+    auto flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuCacheable | EnvideoMap_GpuCacheable);
 
     EXPECT_EQ(envideo_map_create(dev, &map, size, align, flags), 0);
 
@@ -119,7 +119,7 @@ TEST_F(MapTest, Pin) {
     EnvideoMap *map;
 
     auto size = 0x1000, align = 0x1000;
-    auto flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuCacheable | EnvideoMap_GpuCacheable | EnvideoMap_UsageGeneric);
+    auto flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuCacheable | EnvideoMap_GpuCacheable);
 
     EnvideoChannel *channel;
     EXPECT_EQ(envideo_channel_create(dev, &channel, EnvideoEngine_Copy), 0);
@@ -134,7 +134,7 @@ TEST_F(MapTest, Pin) {
     EXPECT_EQ(envideo_channel_destroy(channel), 0);
 }
 
-struct FlagTest: public testing::TestWithParam<std::tuple<EnvideoMapFlags, EnvideoMapFlags, EnvideoMapFlags>> {
+struct FlagTest: public testing::TestWithParam<std::tuple<EnvideoMapFlags, EnvideoMapFlags, EnvideoMapFlags, EnvideoMapFlags>> {
     FlagTest() { envideo_device_create(&this->dev); }
    ~FlagTest() { envideo_device_destroy(this->dev); }
     EnvideoDevice *dev = nullptr;
@@ -144,7 +144,8 @@ TEST_P(FlagTest, Basic) {
     EnvideoMap *map;
 
     auto size = 0x1000, align = 0x1000;
-    auto flags = static_cast<EnvideoMapFlags>(std::get<0>(GetParam()) | std::get<1>(GetParam()) | std::get<2>(GetParam()));
+    auto flags = static_cast<EnvideoMapFlags>(std::get<0>(GetParam()) | std::get<1>(GetParam()) |
+                                              std::get<2>(GetParam()) | std::get<3>(GetParam()));
 
     EXPECT_EQ(envideo_map_create(dev, &map, size, align, flags), 0);
 
@@ -203,6 +204,7 @@ INSTANTIATE_TEST_CASE_P(FlagCombinations, FlagTest,
     ::testing::Combine(
         ::testing::ValuesIn({EnvideoMap_CpuCacheable, EnvideoMap_CpuWriteCombine,  EnvideoMap_CpuUncacheable, EnvideoMap_CpuUnmapped}),
         ::testing::ValuesIn({EnvideoMap_GpuCacheable, EnvideoMap_GpuUncacheable,   EnvideoMap_GpuUnmapped                           }),
+        ::testing::ValuesIn({EnvideoMap_LocationHost, EnvideoMap_LocationDevice                                                     }),
         ::testing::ValuesIn({EnvideoMap_UsageGeneric, EnvideoMap_UsageFramebuffer, EnvideoMap_UsageEngine,    EnvideoMap_UsageCmdbuf})
     )
 );

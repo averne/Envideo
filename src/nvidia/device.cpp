@@ -80,17 +80,11 @@ template <typename T> int nvesc_iowr(int fd, int nr, T *type) {
 }
 
 std::uint32_t get_memory_class(EnvideoMapFlags flags) {
-    switch (ENVIDEO_MAP_GET_USAGE_FLAGS(flags)) {
-        case EnvideoMap_UsageGeneric:
-            return NV01_MEMORY_LOCAL_USER;
-        case EnvideoMap_UsageFramebuffer:
-        case EnvideoMap_UsageEngine:
-            if (ENVIDEO_MAP_GET_CPU_FLAGS(flags) == EnvideoMap_CpuUnmapped)
-                return NV01_MEMORY_LOCAL_USER;
-            else
-                return NV01_MEMORY_SYSTEM;
-        case EnvideoMap_UsageCmdbuf:
+    switch (ENVIDEO_MAP_GET_LOCATION_FLAGS(flags)) {
+        case EnvideoMap_LocationHost:
             return NV01_MEMORY_SYSTEM;
+        case EnvideoMap_LocationDevice:
+            return NV01_MEMORY_LOCAL_USER;
         default:
             return -1;
     }
@@ -109,7 +103,7 @@ std::uint32_t get_memory_type(EnvideoMapFlags flags) {
 }
 
 std::uint32_t get_alloc_flags(EnvideoMapFlags flags, std::uint32_t *attr, std::uint32_t *attr2, bool from_va = false) {
-    std::uint32_t cpu_cache_flags, gpu_cache_flags;
+    std::uint32_t cpu_cache_flags, gpu_cache_flags, location_flags;
 
     switch (ENVIDEO_MAP_GET_CPU_FLAGS(flags)) {
         case EnvideoMap_CpuCacheable:
@@ -138,37 +132,44 @@ std::uint32_t get_alloc_flags(EnvideoMapFlags flags, std::uint32_t *attr, std::u
             return -1;
     }
 
+    switch (ENVIDEO_MAP_GET_LOCATION_FLAGS(flags)) {
+        case EnvideoMap_LocationHost:
+            location_flags = DRF_DEF(OS32, _ATTR, _LOCATION,    _PCI);
+            break;
+        case EnvideoMap_LocationDevice:
+            location_flags = DRF_DEF(OS32, _ATTR, _LOCATION,    _VIDMEM);
+            break;
+        default:
+            return -1;
+    }
+
     std::uint32_t res = 0;
     switch (ENVIDEO_MAP_GET_USAGE_FLAGS(flags)) {
         case EnvideoMap_UsageGeneric:
-            *attr  = DRF_DEF(OS32, _ATTR, _LOCATION,    _VIDMEM)     | DRF_DEF(OS32, _ATTR, _PAGE_SIZE, _4KB) |
-                     DRF_DEF(OS32, _ATTR, _PHYSICALITY, _CONTIGUOUS) | cpu_cache_flags;
+            *attr  = DRF_DEF(OS32, _ATTR, _PAGE_SIZE, _4KB) | DRF_DEF(OS32, _ATTR, _PHYSICALITY, _CONTIGUOUS) |
+                     cpu_cache_flags | location_flags;
             *attr2 = DRF_DEF(OS32, _ATTR2, _ZBC, _PREFER_NO_ZBC) | gpu_cache_flags;
             res    = NVOS32_ALLOC_FLAGS_PERSISTENT_VIDMEM;
             break;
         case EnvideoMap_UsageFramebuffer:
-            if (ENVIDEO_MAP_GET_CPU_FLAGS(flags) == EnvideoMap_CpuUnmapped)
-                *attr = DRF_DEF(OS32, _ATTR, _LOCATION, _VIDMEM) | DRF_DEF(OS32, _ATTR, _PAGE_SIZE, _HUGE);
+            if (ENVIDEO_MAP_GET_LOCATION_FLAGS(flags) == EnvideoMap_LocationDevice)
+                *attr = DRF_DEF(OS32, _ATTR, _PAGE_SIZE, _HUGE);
             else
-                *attr = DRF_DEF(OS32, _ATTR, _LOCATION, _PCI)    | DRF_DEF(OS32, _ATTR, _PAGE_SIZE, _DEFAULT);
+                *attr = DRF_DEF(OS32, _ATTR, _PAGE_SIZE, _DEFAULT);
 
-            *attr |= DRF_DEF(OS32, _ATTR, _PHYSICALITY, _NONCONTIGUOUS) | cpu_cache_flags;
+            *attr |= DRF_DEF(OS32, _ATTR, _PHYSICALITY, _NONCONTIGUOUS) | cpu_cache_flags | location_flags;
             *attr2 = DRF_DEF(OS32, _ATTR2, _ZBC, _PREFER_NO_ZBC) | DRF_DEF(OS32, _ATTR2, _PAGE_SIZE_HUGE, _DEFAULT) | gpu_cache_flags;
             res    = NVOS32_ALLOC_FLAGS_PERSISTENT_VIDMEM;
             break;
         case EnvideoMap_UsageEngine:
-            if (ENVIDEO_MAP_GET_CPU_FLAGS(flags) == EnvideoMap_CpuUnmapped)
-                *attr = DRF_DEF(OS32, _ATTR, _LOCATION, _VIDMEM);
-            else
-                *attr = DRF_DEF(OS32, _ATTR, _LOCATION, _PCI);
-
-            *attr |= DRF_DEF(OS32, _ATTR, _PAGE_SIZE, _DEFAULT) | DRF_DEF(OS32, _ATTR, _PHYSICALITY, _NONCONTIGUOUS) | cpu_cache_flags;
+            *attr  = DRF_DEF(OS32, _ATTR, _PAGE_SIZE, _DEFAULT) | DRF_DEF(OS32, _ATTR, _PHYSICALITY, _NONCONTIGUOUS) |
+                     cpu_cache_flags | location_flags;
             *attr2 = DRF_DEF(OS32, _ATTR2, _ZBC, _PREFER_NO_ZBC) | gpu_cache_flags;
             res    = NVOS32_ALLOC_FLAGS_PERSISTENT_VIDMEM;
             break;
         case EnvideoMap_UsageCmdbuf:
-            *attr  = DRF_DEF(OS32, _ATTR, _LOCATION,    _PCI)           | DRF_DEF(OS32, _ATTR, _PAGE_SIZE, _4KB) |
-                     DRF_DEF(OS32, _ATTR, _PHYSICALITY, _NONCONTIGUOUS) | cpu_cache_flags;
+            *attr  = DRF_DEF(OS32, _ATTR, _PAGE_SIZE, _4KB) | DRF_DEF(OS32, _ATTR, _PHYSICALITY, _NONCONTIGUOUS) |
+                     cpu_cache_flags | location_flags;
             *attr2 = DRF_DEF(OS32, _ATTR2, _ZBC, _PREFER_NO_ZBC) | gpu_cache_flags;
             break;
         default:
@@ -424,20 +425,20 @@ int Device::initialize() {
     NV0080_CTRL_BSP_GET_CAPS_PARAMS_V2 nvdec_caps = { .instanceId = 0 };
     ENVID_CHECK(this->nvrm_control(this->device, NV0080_CTRL_CMD_BSP_GET_CAPS_V2, nvdec_caps));
 
-    if (!(nvdec_caps.capsTbl[0] & ENVIDEO_BIT(0))) {
+    if (!(nvdec_caps.capsTbl[0] & util::bit(0))) {
         this->vp8_unsupported = this->vp9_unsupported = this->vp9_high_depth_unsupported = true;
     } else {
-        this->vp8_unsupported =  !(nvdec_caps.capsTbl[4] & ENVIDEO_BIT(2));
-        this->vp9_unsupported = !!(nvdec_caps.capsTbl[3] & ENVIDEO_BIT(1));
+        this->vp8_unsupported =  !(nvdec_caps.capsTbl[4] & util::bit(2));
+        this->vp9_unsupported = !!(nvdec_caps.capsTbl[3] & util::bit(1));
 
         if (!this->vp9_unsupported)
-            this->vp9_high_depth_unsupported = !(nvdec_caps.capsTbl[4] & ENVIDEO_BIT(4));
+            this->vp9_high_depth_unsupported = !(nvdec_caps.capsTbl[4] & util::bit(4));
     }
 
-    this->h264_unsupported = !!(nvdec_caps.capsTbl[2] & ENVIDEO_BIT(0));
-    this->hevc_unsupported = !!(nvdec_caps.capsTbl[1] & ENVIDEO_BIT(0));
+    this->h264_unsupported = !!(nvdec_caps.capsTbl[2] & util::bit(0));
+    this->hevc_unsupported = !!(nvdec_caps.capsTbl[1] & util::bit(0));
 
-    this->av1_unsupported  = !!(nvdec_caps.capsTbl[3] & ENVIDEO_BIT(0));
+    this->av1_unsupported  = !!(nvdec_caps.capsTbl[3] & util::bit(0));
 
     return 0;
 }

@@ -109,19 +109,24 @@ typedef enum {
     EnvideoMap_GpuUncacheable   = 1 << 4,
     EnvideoMap_GpuUnmapped      = 2 << 4,
 
-    EnvideoMap_UsageGeneric     = 0 << 8,
-    EnvideoMap_UsageFramebuffer = 1 << 8,
-    EnvideoMap_UsageEngine      = 2 << 8,
-    EnvideoMap_UsageCmdbuf      = 3 << 8,
+    EnvideoMap_LocationHost     = 0 << 8,
+    EnvideoMap_LocationDevice   = 1 << 8,
+
+    EnvideoMap_UsageGeneric     = 0 << 12,
+    EnvideoMap_UsageFramebuffer = 1 << 12,
+    EnvideoMap_UsageEngine      = 2 << 12,
+    EnvideoMap_UsageCmdbuf      = 3 << 12,
 
     EnvideoMap_CpuMask          = 0x000f,
     EnvideoMap_GpuMask          = 0x00f0,
-    EnvideoMap_UsageMask        = 0x0f00,
+    EnvideoMap_LocationMask     = 0x0f00,
+    EnvideoMap_UsageMask        = 0xf000,
 } EnvideoMapFlags;
 
-#define ENVIDEO_MAP_GET_CPU_FLAGS(f)   ((EnvideoMapFlags)((f) & EnvideoMap_CpuMask))
-#define ENVIDEO_MAP_GET_GPU_FLAGS(f)   ((EnvideoMapFlags)((f) & EnvideoMap_GpuMask))
-#define ENVIDEO_MAP_GET_USAGE_FLAGS(f) ((EnvideoMapFlags)((f) & EnvideoMap_UsageMask))
+#define ENVIDEO_MAP_GET_CPU_FLAGS(f)      ((EnvideoMapFlags)((f) & EnvideoMap_CpuMask))
+#define ENVIDEO_MAP_GET_GPU_FLAGS(f)      ((EnvideoMapFlags)((f) & EnvideoMap_GpuMask))
+#define ENVIDEO_MAP_GET_LOCATION_FLAGS(f) ((EnvideoMapFlags)((f) & EnvideoMap_LocationMask))
+#define ENVIDEO_MAP_GET_USAGE_FLAGS(f)    ((EnvideoMapFlags)((f) & EnvideoMap_UsageMask))
 
 typedef enum {
     EnvideoCache_Writeback  = ENVIDEO_BIT(0),

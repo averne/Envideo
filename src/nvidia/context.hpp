@@ -75,8 +75,8 @@ class Channel final: public envid::Channel {
     public:
         Channel(envid::Device *device, EnvideoEngine engine):
             envid::Channel(device, engine),
-            userd  (device, static_cast<EnvideoMapFlags>(EnvideoMap_CpuWriteCombine | EnvideoMap_GpuUncacheable | EnvideoMap_UsageGeneric)),
-            entries(device, static_cast<EnvideoMapFlags>(EnvideoMap_CpuWriteCombine | EnvideoMap_GpuUncacheable | EnvideoMap_UsageCmdbuf)) { }
+            userd  (device, static_cast<EnvideoMapFlags>(EnvideoMap_CpuWriteCombine | EnvideoMap_GpuUncacheable | EnvideoMap_LocationDevice)),
+            entries(device, static_cast<EnvideoMapFlags>(EnvideoMap_CpuWriteCombine | EnvideoMap_GpuUncacheable | EnvideoMap_LocationDevice)) { }
 
         virtual int            initialize()                                       override;
         virtual int            finalize()                                         override;
@@ -112,7 +112,7 @@ class Device final: public envid::Device {
         Device():
             rusd      (this, EnvideoMap_CpuWriteCombine),
             usermode  (this, EnvideoMap_CpuWriteCombine),
-            semaphores(this, static_cast<EnvideoMapFlags>(EnvideoMap_CpuWriteCombine | EnvideoMap_GpuUncacheable | EnvideoMap_UsageGeneric)) {}
+            semaphores(this, static_cast<EnvideoMapFlags>(EnvideoMap_CpuWriteCombine | EnvideoMap_GpuUncacheable | EnvideoMap_LocationHost)) {}
 
         virtual int initialize()                                       override;
         virtual int finalize()                                         override;

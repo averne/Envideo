@@ -94,7 +94,8 @@ struct JobTest: public testing::Test {
         envideo_device_create(&this->dev);
         envideo_channel_create(this->dev, &this->chan, EnvideoEngine_Copy);
         envideo_map_create(this->dev, &this->cmdbuf_map, 0x10000, 0x1000,
-            static_cast<EnvideoMapFlags>(EnvideoMap_CpuWriteCombine | EnvideoMap_GpuUncacheable | EnvideoMap_UsageCmdbuf));
+            static_cast<EnvideoMapFlags>(EnvideoMap_CpuWriteCombine | EnvideoMap_GpuUncacheable |
+                                         EnvideoMap_LocationHost    | EnvideoMap_UsageCmdbuf));
         envideo_map_pin(this->cmdbuf_map, this->chan);
         envideo_cmdbuf_create(this->chan, &this->cmdbuf);
         envideo_cmdbuf_add_memory(this->cmdbuf, this->cmdbuf_map, 0, envideo_map_get_size(this->cmdbuf_map));

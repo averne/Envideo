@@ -36,7 +36,8 @@ struct CopyTest: public testing::Test {
         envideo_device_create(&this->dev);
         envideo_channel_create(this->dev, &this->chan, EnvideoEngine_Copy);
         envideo_map_create(this->dev, &this->cmdbuf_map, 0x10000, 0x1000,
-            static_cast<EnvideoMapFlags>(EnvideoMap_CpuWriteCombine | EnvideoMap_GpuUncacheable | EnvideoMap_UsageCmdbuf));
+            static_cast<EnvideoMapFlags>(EnvideoMap_CpuWriteCombine | EnvideoMap_GpuUncacheable |
+                                         EnvideoMap_LocationHost    | EnvideoMap_UsageCmdbuf));
         envideo_map_pin(this->cmdbuf_map, this->chan);
         envideo_cmdbuf_create(this->chan, &this->cmdbuf);
         envideo_cmdbuf_add_memory(this->cmdbuf, this->cmdbuf_map, 0, envideo_map_get_size(this->cmdbuf_map));
@@ -60,7 +61,8 @@ TEST_F(CopyTest, Memset) {
 
     auto size = 0x100000, align = 0x1000;
 
-    auto flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuCacheable | EnvideoMap_GpuCacheable | EnvideoMap_UsageFramebuffer);
+    auto flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuCacheable | EnvideoMap_GpuCacheable |
+                                              EnvideoMap_LocationHost | EnvideoMap_UsageFramebuffer);
     EXPECT_EQ(envideo_map_create(dev, &map, size, align, flags), 0);
     EXPECT_EQ(envideo_map_pin(map, chan), 0);
 
@@ -108,7 +110,8 @@ TEST_F(CopyTest, MemsetFromVa) {
     std::memset(mem, 0xaa, memset_off);
     std::memset(mem + memset_off + memset_size, 0xbb, size - memset_size - memset_off);
 
-    auto flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuCacheable | EnvideoMap_GpuCacheable | EnvideoMap_UsageFramebuffer);
+    auto flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuCacheable | EnvideoMap_GpuCacheable |
+                                              EnvideoMap_LocationHost | EnvideoMap_UsageFramebuffer);
     EXPECT_EQ(envideo_map_from_va(dev, &map, mem, size, align, flags), 0);
 
     EXPECT_EQ(envideo_cmdbuf_begin(cmdbuf, EnvideoEngine_Copy), 0);
@@ -150,7 +153,8 @@ TEST_F(CopyTest, Memcpy) {
 
     auto size = 0x100000, align = 0x1000;
 
-    auto flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuCacheable | EnvideoMap_GpuCacheable | EnvideoMap_UsageFramebuffer);
+    auto flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuCacheable | EnvideoMap_GpuCacheable |
+                                              EnvideoMap_LocationHost | EnvideoMap_UsageFramebuffer);
     EXPECT_EQ(envideo_map_create(dev, &src, size, align, flags), 0);
     EXPECT_EQ(envideo_map_create(dev, &dst, size, align, flags), 0);
     EXPECT_EQ(envideo_map_pin(src, chan), 0);
@@ -196,11 +200,13 @@ TEST_F(CopyTest, Image) {
         size = width * height, align = 0x1000;
     EnvideoMapFlags flags;
 
-    flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuUnmapped | EnvideoMap_GpuCacheable | EnvideoMap_UsageFramebuffer);
+    flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuUnmapped    | EnvideoMap_GpuCacheable |
+                                         EnvideoMap_LocationDevice | EnvideoMap_UsageFramebuffer);
     EXPECT_EQ(envideo_map_create(dev, &src, size, align, flags), 0);
     EXPECT_EQ(envideo_map_pin(src, chan), 0);
 
-    flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuCacheable | EnvideoMap_GpuCacheable | EnvideoMap_UsageFramebuffer);
+    flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuCacheable | EnvideoMap_GpuCacheable |
+                                         EnvideoMap_LocationHost | EnvideoMap_UsageFramebuffer);
     EXPECT_EQ(envideo_map_create(dev, &dst, size, align, flags), 0);
     EXPECT_EQ(envideo_map_pin(dst, chan), 0);
 

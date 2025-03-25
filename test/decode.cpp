@@ -37,7 +37,8 @@ struct DecodeTest: public testing::Test {
     DecodeTest() {
         envideo_device_create(&this->dev);
         envideo_map_create(this->dev, &this->cmdbuf_map, 0x10000, 0x1000,
-            static_cast<EnvideoMapFlags>(EnvideoMap_CpuWriteCombine | EnvideoMap_GpuUncacheable | EnvideoMap_UsageCmdbuf));
+            static_cast<EnvideoMapFlags>(EnvideoMap_CpuWriteCombine | EnvideoMap_GpuUncacheable |
+                                         EnvideoMap_LocationHost    | EnvideoMap_UsageCmdbuf));
         envideo_channel_create(this->dev, &this->chan,      EnvideoEngine_Nvdec);
         envideo_channel_create(this->dev, &this->copy_chan, EnvideoEngine_Copy);
         envideo_map_pin(this->cmdbuf_map, this->chan);
@@ -82,16 +83,19 @@ TEST_F(DecodeTest, Mpeg2) {
     EnvideoMap *input_map, *frame, *result;
     EnvideoFence decode_fence, copy_fence;
 
-    flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuWriteCombine | EnvideoMap_GpuCacheable | EnvideoMap_UsageEngine);
+    flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuWriteCombine | EnvideoMap_GpuCacheable |
+                                         EnvideoMap_LocationDevice  | EnvideoMap_UsageEngine);
     EXPECT_EQ(envideo_map_create(dev, &input_map, size, align, flags), 0);
     EXPECT_EQ(envideo_map_pin(input_map, chan), 0);
 
-    flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuUnmapped | EnvideoMap_GpuCacheable | EnvideoMap_UsageFramebuffer);
+    flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuUnmapped    | EnvideoMap_GpuCacheable |
+                                         EnvideoMap_LocationDevice | EnvideoMap_UsageFramebuffer);
     EXPECT_EQ(envideo_map_create(dev, &frame, frame_size, align, flags), 0);
     EXPECT_EQ(envideo_map_pin(frame, chan),      0);
     EXPECT_EQ(envideo_map_pin(frame, copy_chan), 0);
 
-    flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuCacheable | EnvideoMap_GpuCacheable | EnvideoMap_UsageFramebuffer);
+    flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuCacheable | EnvideoMap_GpuCacheable |
+                                         EnvideoMap_LocationHost | EnvideoMap_UsageFramebuffer);
     EXPECT_EQ(envideo_map_create(dev, &result, frame_size, align, flags), 0);
     EXPECT_EQ(envideo_map_pin(result, copy_chan), 0);
 

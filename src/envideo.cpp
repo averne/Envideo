@@ -126,6 +126,12 @@ int envideo_map_create(EnvideoDevice *device, EnvideoMap **map,
 
     *map = nullptr;
 
+    // Device memory cannot be cpu-cacheable
+    if (ENVIDEO_MAP_GET_LOCATION_FLAGS(flags) == EnvideoMap_LocationDevice) {
+        auto cpu_flags = std::max(EnvideoMap_CpuWriteCombine, ENVIDEO_MAP_GET_CPU_FLAGS(flags));
+        flags = static_cast<EnvideoMapFlags>((flags & ~EnvideoMap_CpuMask) | cpu_flags);
+    }
+
     envid::Map *m = nullptr;
     switch (ENVIDEO_PLATFORM_GET_DRIVER(device->platform)) {
 #ifdef CONFIG_NVIDIA
@@ -161,6 +167,9 @@ int envideo_map_from_va(EnvideoDevice *device, EnvideoMap **map, void *mem,
     if (!device || !map || !mem) return ENVIDEO_RC_SYSTEM(EINVAL);
 
     *map = nullptr;
+
+    // Pre-allocated memory is always on the host side
+    flags = static_cast<EnvideoMapFlags>((flags & ~EnvideoMap_LocationHost) | EnvideoMap_LocationHost);
 
     envid::Map *m = nullptr;
     switch (ENVIDEO_PLATFORM_GET_DRIVER(device->platform)) {
