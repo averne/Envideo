@@ -585,7 +585,8 @@ int Map::map_gpu() {
         .hMemory = this->object.handle,
         .offset  = 0,
         .length  = this->size,
-        .flags   = DRF_DEF(OS46, _FLAGS, _PAGE_SIZE, _DEFAULT),
+        .flags   = DRF_DEF(OS46, _FLAGS, _PAGE_SIZE,              _DEFAULT) |
+                   DRF_DEF(OS46, _FLAGS, _DEFER_TLB_INVALIDATION, _FALSE),
     };
     ENVID_CHECK_RM(nvesc_iowr(d.ctl_fd, NV_ESC_RM_MAP_MEMORY_DMA, &p), p.status);
 
@@ -598,13 +599,16 @@ int Map::unmap_gpu() {
     auto &d = *reinterpret_cast<Device *>(this->device);
 
     if (this->gpu_addr_pitch) {
-        auto p = NVOS34_PARAMETERS{
-            .hClient        = d.root.handle,
-            .hDevice        = d.subdevice.handle,
-            .hMemory        = this->object.handle,
-            .pLinearAddress = NV_PTR_TO_NvP64(this->gpu_addr_pitch),
+        auto p = NVOS47_PARAMETERS{
+            .hClient   = d.root.handle,
+            .hDevice   = d.device.handle,
+            .hDma      = d.vaspace.handle,
+            .hMemory   = this->object.handle,
+            .flags     = DRF_DEF(OS47, _FLAGS, _DEFER_TLB_INVALIDATION, _FALSE),
+            .dmaOffset = this->gpu_addr_pitch,
+            .size      = this->size,
         };
-        ENVID_CHECK_RM(nvesc_iowr(d.ctl_fd, NV_ESC_RM_UNMAP_MEMORY, &p), p.status);
+        ENVID_CHECK_RM(nvesc_iowr(d.ctl_fd, NV_ESC_RM_UNMAP_MEMORY_DMA, &p), p.status);
     }
 
     return 0;
