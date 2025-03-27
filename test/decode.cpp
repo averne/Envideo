@@ -45,8 +45,10 @@ struct DecodeTest: public testing::Test {
         envideo_map_pin(this->cmdbuf_map, this->copy_chan);
         envideo_cmdbuf_create(this->chan,      &this->cmdbuf);
         envideo_cmdbuf_create(this->copy_chan, &this->copy_cmdbuf);
-        envideo_cmdbuf_add_memory(this->cmdbuf,      this->cmdbuf_map, 0,      envideo_map_get_size(this->cmdbuf_map));
-        envideo_cmdbuf_add_memory(this->copy_cmdbuf, this->cmdbuf_map, 0x8000, envideo_map_get_size(this->cmdbuf_map));
+
+        auto size = envideo_map_get_size(this->cmdbuf_map);
+        envideo_cmdbuf_add_memory(this->cmdbuf,      this->cmdbuf_map, 0,        size / 2);
+        envideo_cmdbuf_add_memory(this->copy_cmdbuf, this->cmdbuf_map, size / 2, size / 2);
     }
 
     ~DecodeTest() {

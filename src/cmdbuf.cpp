@@ -73,6 +73,9 @@ constexpr inline std::uint32_t reloc_type_to_host1x(EnvideoRelocType type) {
 } // namespace
 
 int Cmdbuf::add_memory(const envid::Map *map, std::uint32_t offset, std::uint32_t size) {
+    if (offset + size > map->size)
+        return ENVIDEO_RC_SYSTEM(EINVAL);
+
     this->map        = map;
     this->mem_offset = offset;
     this->mem_size   = size;
@@ -120,7 +123,7 @@ int GpfifoCmdbuf::end() {
 int GpfifoCmdbuf::push_word(std::uint32_t word) {
     auto mem_start = reinterpret_cast<std::uintptr_t>(this->map->cpu_addr) + this->mem_offset;
 
-    if (reinterpret_cast<uintptr_t>(this->cur_word) - mem_start >= this->mem_size)
+    if (reinterpret_cast<uintptr_t>(this->cur_word) - mem_start + sizeof(std::uint32_t) >= this->mem_size)
         return ENVIDEO_RC_SYSTEM(ENOMEM);
 
     *this->cur_word++ = word;
@@ -272,7 +275,7 @@ int Host1xCmdbuf::end() {
 int Host1xCmdbuf::push_word(std::uint32_t word) {
     auto mem_start = reinterpret_cast<std::uintptr_t>(this->map->cpu_addr) + this->mem_offset;
 
-    if (reinterpret_cast<uintptr_t>(this->cur_word) - mem_start >= this->mem_size)
+    if (reinterpret_cast<uintptr_t>(this->cur_word) - mem_start + sizeof(std::uint32_t) >= this->mem_size)
         return ENVIDEO_RC_SYSTEM(ENOMEM);
 
     *this->cur_word++ = word;

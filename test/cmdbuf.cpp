@@ -65,6 +65,7 @@ TEST_F(CmdbufTest, Basic) {
 
     EXPECT_EQ(envideo_cmdbuf_create(chan, &cmdbuf), 0);
 
+    EXPECT_NE(envideo_cmdbuf_add_memory(cmdbuf,  cmdbuf_map, 0,    size + 1),                    0);
     EXPECT_NE(envideo_cmdbuf_add_memory(nullptr, cmdbuf_map, 0,    size),                        0);
     EXPECT_NE(envideo_cmdbuf_add_memory(cmdbuf,  nullptr,    0,    size),                        0);
     EXPECT_NE(envideo_cmdbuf_clear     (nullptr),                                                0);
@@ -77,5 +78,29 @@ TEST_F(CmdbufTest, Basic) {
     EXPECT_NE(envideo_cmdbuf_wait_fence(nullptr, 0),                                             0);
     EXPECT_NE(envideo_cmdbuf_cache_op  (nullptr, EnvideoCache_Writeback),                        0);
 
+    EXPECT_EQ(envideo_cmdbuf_destroy(cmdbuf), 0);
+}
+
+TEST_F(CmdbufTest, Limit) {
+    EnvideoCmdbuf *cmdbuf;
+
+    auto size = envideo_map_get_size(cmdbuf_map) - 1;
+
+    EXPECT_EQ(envideo_cmdbuf_create    (chan, &cmdbuf),               0);
+    EXPECT_EQ(envideo_cmdbuf_add_memory(cmdbuf, cmdbuf_map, 0, size), 0);
+
+    EXPECT_EQ(envideo_cmdbuf_begin(cmdbuf, EnvideoEngine_Host), 0);
+
+    // We created a copy channel, which hosted by the gpfifo engine on all platforms
+    // We should be able to write precisely the number of dwords that we reserved for the command buffer,
+    // because it should not sneak in extraneous SetClass/other commands that would disrupt our count
+    // This would not work on eg. a host1x channel on HOS
+    for (std::size_t i = 0; i < size / sizeof(std::uint32_t); ++i)
+        EXPECT_EQ(envideo_cmdbuf_push_word(cmdbuf, 0), 0);
+
+    // The command buffer should be full
+    EXPECT_NE(envideo_cmdbuf_push_word(cmdbuf, 0), 0);
+
+    EXPECT_EQ(envideo_cmdbuf_end    (cmdbuf), 0);
     EXPECT_EQ(envideo_cmdbuf_destroy(cmdbuf), 0);
 }
