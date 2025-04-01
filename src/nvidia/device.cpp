@@ -288,16 +288,17 @@ int Device::unregister_event(std::uint32_t notifier_type) {
 }
 
 int Device::get_class_id(std::uint32_t engine_type, std::uint32_t &cl) const {
-    NV2080_CTRL_GPU_GET_ENGINE_CLASSLIST_PARAMS eng_list = { .engineType = engine_type };
+    cl = 0;
+
+    NV2080_CTRL_GPU_GET_ENGINE_CLASSLIST_PARAMS eng_list = {
+        .engineType = engine_type,
+        .numClasses = 1,
+        .classList  = &cl,
+    };
     ENVID_CHECK(this->nvrm_control(this->subdevice, NV2080_CTRL_CMD_GPU_GET_ENGINE_CLASSLIST, eng_list));
-    if (!eng_list.numClasses)
+    if (!eng_list.numClasses || !cl)
         return ENVIDEO_RC_SYSTEM(ENOSYS);
 
-    std::vector<std::uint32_t> class_list(eng_list.numClasses);
-    eng_list.classList = class_list.data();
-    ENVID_CHECK(this->nvrm_control(this->subdevice, NV2080_CTRL_CMD_GPU_GET_ENGINE_CLASSLIST, eng_list));
-
-    cl = class_list[0];
     return 0;
 }
 
