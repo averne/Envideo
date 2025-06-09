@@ -449,6 +449,8 @@ int Map::map_cpu() {
         return ENVIDEO_RC_SYSTEM(errno);
 
     this->cpu_addr = addr;
+#elif defined(__SWITCH__)
+    this->cpu_addr = this->map.cpu_addr;
 #endif
 
     return 0;
@@ -472,6 +474,8 @@ int Map::unmap_cpu() {
         ::munmap(this->cpu_addr, this->size);
         this->cpu_addr = nullptr;
     }
+#elif defined(__SWITCH__)
+    this->cpu_addr = nullptr;
 #endif
 
     return 0;
@@ -548,6 +552,11 @@ int Map::initialize(size_t size, size_t align) {
         ENVID_CHECK(this->map_gpu());
 
     guard.cancel();
+
+#if defined(__SWITCH__)
+    // Always make the cpu address available, since it is used when mapping video buffers to deko3d
+    this->map_cpu();
+#endif
 
     return 0;
 }
