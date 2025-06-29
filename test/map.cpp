@@ -79,7 +79,7 @@ TEST_F(MapTest, FromVa) {
     EXPECT_NE(envideo_map_from_va(nullptr, &map, mem, size, align, flags), 0);
     EXPECT_NE(envideo_map_from_va(dev, &map, nullptr, size, align, flags), 0);
 
-    delete[] mem;
+    operator delete[] (mem, std::align_val_t(align));
 }
 
 TEST_F(MapTest, Realloc) {
@@ -149,8 +149,8 @@ TEST_P(FlagTest, Basic) {
 
     EXPECT_EQ(envideo_map_create(dev, &map, size, align, flags), 0);
 
-    EXPECT_NE(envideo_map_get_handle  (map), 0);
-    EXPECT_GE(envideo_map_get_size    (map), size);
+    EXPECT_NE(envideo_map_get_handle(map), 0);
+    EXPECT_GE(envideo_map_get_size  (map), size);
 
     if (ENVIDEO_MAP_GET_CPU_FLAGS(flags) == EnvideoMap_CpuUnmapped)
         EXPECT_EQ(envideo_map_get_cpu_addr(map), nullptr);
@@ -179,8 +179,8 @@ TEST_P(FlagTest, FromVa) {
 
     EXPECT_EQ(envideo_map_from_va(dev, &map, mem, size, align, flags), 0);
 
-    EXPECT_NE(envideo_map_get_handle  (map), 0);
-    EXPECT_GE(envideo_map_get_size    (map), size);
+    EXPECT_NE(envideo_map_get_handle(map), 0);
+    EXPECT_GE(envideo_map_get_size  (map), size);
 
     if (ENVIDEO_MAP_GET_CPU_FLAGS(flags) == EnvideoMap_CpuUnmapped)
         EXPECT_EQ(envideo_map_get_cpu_addr(map), nullptr);
@@ -198,6 +198,7 @@ TEST_P(FlagTest, FromVa) {
 
     EXPECT_EQ(envideo_map_destroy(map), 0);
 
+    operator delete[] (mem, std::align_val_t(align));
 }
 
 INSTANTIATE_TEST_CASE_P(FlagCombinations, FlagTest,

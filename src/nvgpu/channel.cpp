@@ -26,8 +26,15 @@
 #include <nvmisc.h>
 #include <clc76f.h>
 
+#if __has_include(<nvgpu-uapi-common.h>)
+#include <nvgpu-uapi-common.h>
+#endif
 #include <nvgpu.h>
 #include <nvhost_ioctl.h>
+#ifdef CONFIG_TEGRA_DRM
+#include <drm/drm.h>
+#include <drm/tegra_drm.h>
+#endif
 
 #include "context.hpp"
 #include "../cmdbuf.hpp"
@@ -113,6 +120,7 @@ int Channel::initialize() {
     auto &d = *reinterpret_cast<Device *>(this->device);
 
     if (this->engine != EnvideoEngine_Copy) {
+#ifndef CONFIG_TEGRA_DRM
         this->type = Type::Host1x;
 
         std::string_view path;
@@ -156,6 +164,10 @@ int Channel::initialize() {
         ENVID_CHECK(this->get_syncpoint(this->syncpt));
         ENVID_CHECK(this->set_submit_timeout(1000));
         ENVID_CHECK(this->set_clock_rate(UINT32_MAX));
+#else
+        ENVID_CHECK(d.drm_open_channel(this->handle, engine_to_host1x_class_id(this->engine)));
+        ENVID_CHECK(d.drm_alloc_syncpt(this->syncpt));
+#endif
     } else {
         this->type = Type::Gpfifo;
 
@@ -168,13 +180,10 @@ int Channel::initialize() {
         ENVID_CHECK(this->alloc_obj_ctx(this->obj_id, d.copy_class));
 #elif defined(__SWITCH__)
         ENVID_CHECK_RC(nvChannelCreate(&this->channel, "/dev/nvhost-gpu"));
-
         this->fd = this->channel.fd;
 
         ENVID_CHECK_RC(nvioctlNvhostAsGpu_BindChannel(d.gpu_as.fd, this->fd));
-
         ENVID_CHECK_RC(nvioctlChannel_AllocGpfifoEx2(this->fd, GpfifoCmdbuf::num_entries, 1, 0, 0, 0, 0, nullptr));
-
         ENVID_CHECK_RC(nvioctlChannel_AllocObjCtx(this->fd, d.copy_class, 0, nullptr));
 #endif
     }
@@ -184,6 +193,13 @@ int Channel::initialize() {
 
 int Channel::finalize() {
 #if defined(__linux__)
+#ifdef CONFIG_TEGRA_DRM
+    if (this->type != Type::Gpfifo) {
+        auto &d = *reinterpret_cast<Device *>(this->device);
+        d.drm_close_channel(this->handle);
+        d.drm_free_syncpt(this->syncpt);
+    } else
+#endif
     if (this->fd)
         ::close(this->fd);
 #elif defined(__SWITCH__)
@@ -196,6 +212,8 @@ int Channel::finalize() {
 }
 
 envid::Cmdbuf *Channel::create_cmdbuf() {
+    auto &d = *reinterpret_cast<Device *>(this->device);
+
     if (engine_is_multimedia(this->engine)) {
         bool need_setclass =
 #if defined(__linux__)
@@ -204,9 +222,9 @@ envid::Cmdbuf *Channel::create_cmdbuf() {
             true;
 #endif
 
-        return new envid::Host1xCmdbuf(need_setclass);
+        return new envid::Host1xCmdbuf(d.host1x_version, need_setclass);
     } else {
-        return new envid::GpfifoCmdbuf(true);
+        return new envid::GpfifoCmdbuf(true, d.syncpt_va_base, d.syncpt_page_size);
     }
 }
 
@@ -220,6 +238,7 @@ int Channel::submit(envid::Cmdbuf *cmdbuf, envid::Fence *fence) {
         c->end();
 
 #if defined(__linux__)
+#ifndef CONFIG_TEGRA_DRM
         auto args = nvhost_submit_args{
             .submit_version          = NVHOST_SUBMIT_VERSION_V2,
             .num_syncpt_incrs        = static_cast<std::uint32_t>(c->syncpt_incrs.size()),
@@ -240,6 +259,26 @@ int Channel::submit(envid::Cmdbuf *cmdbuf, envid::Fence *fence) {
         ENVID_CHECK_ERRNO(::ioctl(this->fd, NVHOST_IOCTL_CHANNEL_SUBMIT, &args));
 
         auto fence_val = args.fence;
+#else
+        auto &d = *reinterpret_cast<Device *>(this->device);
+
+        auto args = drm_tegra_channel_submit{
+            .context           = this->handle,
+            .num_bufs          = static_cast<std::uint32_t>(c->bufs.size()),
+            .num_cmds          = static_cast<std::uint32_t>(c->cmds.size()),
+            .gather_data_words = static_cast<std::uint32_t>(c->num_words()),
+            .bufs_ptr          = reinterpret_cast<std::uintptr_t>(c->bufs.data()),
+            .cmds_ptr          = reinterpret_cast<std::uintptr_t>(c->cmds.data()),
+            .gather_data_ptr   = reinterpret_cast<std::uintptr_t>(c->words()),
+            .syncpt = {
+                .id            = this->syncpt,
+                .increments    = 1,
+            },
+        };
+        ENVID_CHECK_ERRNO(::ioctl(d.nvhost_fd, DRM_IOCTL_TEGRA_CHANNEL_SUBMIT, &args));
+
+        auto fence_val = args.syncpt.value;
+#endif
 #elif defined(__SWITCH__)
         std::uint32_t num_incrs = 0;
         std::array<nvioctl_syncpt_incr, 32> incrs;
@@ -272,7 +311,10 @@ int Channel::submit(envid::Cmdbuf *cmdbuf, envid::Fence *fence) {
         auto args = nvgpu_submit_gpfifo_args{
             .gpfifo      = reinterpret_cast<std::uintptr_t>(c->entries.data()),
             .num_entries = static_cast<std::uint32_t>(c->entries.size()),
-            .flags       = NVGPU_SUBMIT_GPFIFO_FLAGS_FENCE_GET,
+            .flags       = NVGPU_SUBMIT_GPFIFO_FLAGS_FENCE_GET    |
+                           NVGPU_SUBMIT_GPFIFO_FLAGS_HW_FORMAT    |
+                           NVGPU_SUBMIT_GPFIFO_FLAGS_SUPPRESS_WFI |
+                           NVGPU_SUBMIT_GPFIFO_FLAGS_SKIP_BUFFER_REFCOUNTING,
         };
         ENVID_CHECK_ERRNO(::ioctl(this->fd, NVGPU_IOCTL_CHANNEL_SUBMIT_GPFIFO, &args));
 

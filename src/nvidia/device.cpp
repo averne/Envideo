@@ -366,9 +366,6 @@ int Device::initialize() {
         .subDeviceId = gpu_info.subDeviceInstance,
     }));
 
-    // XXX: Is this correct?
-    this->is_tegra = DRF_VAL(0000, _CTRL_GPU_ID_INFO, _SOC, gpu_info.gpuFlags);
-
     // Allocate and map user shared memory
     this->rusd.size = sizeof(NV00DE_SHARED_DATA);
     ENVID_CHECK(this->nvrm_alloc(this->subdevice, this->rusd.object, RM_USER_SHARED_DATA, NV00DE_ALLOC_PARAMETERS{

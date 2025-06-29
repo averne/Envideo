@@ -26,6 +26,8 @@
 
 #include <envideo.h>
 
+#include <host1x.h>
+
 namespace envid {
 
 enum class NvdecVersion {
@@ -84,7 +86,7 @@ class Device {
         NvencVersion nvenc_version = NvencVersion::None;
         NvjpgVersion nvjpg_version = NvjpgVersion::None;
 
-        bool is_tegra = false;
+        bool tegra_layout = false;
         bool vp8_unsupported = false, vp9_unsupported  = false, vp9_high_depth_unsupported = false,
             h264_unsupported = false, hevc_unsupported = false, av1_unsupported            = false;
 };
@@ -179,6 +181,15 @@ class Cmdbuf {
         virtual int wait_fence(envid::Fence fence)                        = 0;
         virtual int cache_op(EnvideoCacheFlags flags)                     = 0;
 
+        std::uint32_t *words() const {
+            auto mem = reinterpret_cast<std::uintptr_t>(this->map->cpu_addr);
+            return reinterpret_cast<std::uint32_t *>(mem + this->mem_offset);
+        }
+
+        std::size_t num_words() const {
+            return this->cur_word - this->words();
+        }
+
     public:
         const Map     *map        = nullptr;
         std::uint32_t  mem_offset = 0,
@@ -201,6 +212,18 @@ constexpr bool engine_is_multimedia(EnvideoEngine engine) {
         case EnvideoEngine_Copy:
         default:
             return false;
+    }
+}
+
+constexpr inline std::uint32_t engine_to_host1x_class_id(EnvideoEngine engine) {
+    switch (engine) {
+        case EnvideoEngine_Host:  return HOST1X_CLASS_HOST1X;
+        case EnvideoEngine_Nvdec: return HOST1X_CLASS_NVDEC;
+        case EnvideoEngine_Nvenc: return HOST1X_CLASS_NVENC;
+        case EnvideoEngine_Nvjpg: return HOST1X_CLASS_NVJPG;
+        case EnvideoEngine_Vic:   return HOST1X_CLASS_VIC;
+        case EnvideoEngine_Ofa:   return HOST1X_CLASS_OFA;
+        default:                  return UINT32_C(-1);
     }
 }
 

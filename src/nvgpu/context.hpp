@@ -48,12 +48,14 @@ class Map final: public envid::Map {
     private:
         int get_fd();
         int map_cpu();
-        int map_gpu();
+        int map_gpu(int flags = 0);
         int unmap_cpu();
         int unmap_gpu();
 
     public:
-        int fd = 0;
+        int fd              = 0;
+        std::uint32_t gem   = 0;
+        void *cache_op_addr = nullptr;
 
 #if defined(__SWITCH__)
         void *alloc = nullptr;
@@ -81,7 +83,8 @@ class Channel final: public envid::Channel {
 
     public:
         int           fd        = 0;
-        std::uint32_t module_id = 0,
+        std::uint32_t handle    = 0,
+                      module_id = 0,
                       syncpt    = 0;
         std::uint64_t obj_id    = 0;
 
@@ -108,17 +111,30 @@ class Device: public envid::Device {
         int open_gpu_channel(Channel &channel) const;
         int bind_channel_as (Channel &channel) const;
         int bind_channel_tsg(Channel &channel) const;
-        int map_buffer  (Map &map, std::uint64_t &addr, bool cacheable, bool pitch);
+        int map_buffer  (Map &map, std::uint64_t &addr, int flags, bool cacheable, bool pitch);
         int unmap_buffer(Map &map, std::uint64_t &addr);
+
+        int drm_open_channel(std::uint32_t &handle, std::uint32_t cl);
+        int drm_close_channel(std::uint32_t handle);
+        int drm_alloc_syncpt(std::uint32_t &id);
+        int drm_free_syncpt(std::uint32_t id);
+        int drm_channel_map(std::uint32_t channel_handle, std::uint32_t map_handle, std::uint32_t &id);
+        int drm_channel_unmap(std::uint32_t channel_handle, std::uint32_t id);
+
+        int drm_fd_to_handle(int fd, std::uint32_t &gem);
+        int drm_close_gem(std::uint32_t gem);
 
     private:
         int get_characteristics(nvgpu_gpu_characteristics &characteristics) const;
         int alloc_as(std::uint32_t big_page_size);
         int open_tsg();
+        int query_syncpt_map_params();
         int free_as();
         int close_tsg();
 
     public:
+        bool has_tegra_drm = false;
+
         int chip_id       = 0;
         int nvhost_fd     = 0,
             nvhost_gpu_fd = 0,
@@ -126,7 +142,13 @@ class Device: public envid::Device {
             nvas_fd       = 0,
             nvtsg_fd      = 0;
 
+        std::uint16_t host1x_version = 0,
+                      bl_kind        = 0;
+
         std::uint32_t copy_class = 0;
+
+        std::uint64_t syncpt_va_base   = 0;
+        std::uint32_t syncpt_page_size = 0;
 
 #if defined(__SWITCH__)
         NvAddressSpace gpu_as   = {};

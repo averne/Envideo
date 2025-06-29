@@ -51,12 +51,6 @@ int envideo_device_create(EnvideoDevice **device) {
     envid::Device *dev = nullptr;
 
     if (false);
-#ifdef CONFIG_NVIDIA
-    else if (auto res = envid::nvidia::Device::probe(); res) {
-        dev = new envid::nvidia::Device();
-        p   = static_cast<EnvideoPlatform>(EnvideoPlatform_Linux | EnvideoPlatform_Nvidia);
-    }
-#endif
 #ifdef CONFIG_NVGPU
     else if (auto res = envid::nvgpu::Device::probe(); res) {
         dev = new envid::nvgpu::Device();
@@ -65,6 +59,12 @@ int envideo_device_create(EnvideoDevice **device) {
 #elif defined(__SWITCH__)
         p   = static_cast<EnvideoPlatform>(EnvideoPlatform_Hos | EnvideoPlatform_Nvgpu);
 #endif
+    }
+#endif
+#ifdef CONFIG_NVIDIA
+    else if (auto res = envid::nvidia::Device::probe(); res) {
+        dev = new envid::nvidia::Device();
+        p   = static_cast<EnvideoPlatform>(EnvideoPlatform_Linux | EnvideoPlatform_Nvidia);
     }
 #endif
     else
@@ -101,7 +101,7 @@ EnvideoDeviceInfo envideo_device_get_info(EnvideoDevice *device) {
     if (!device) return {};
 
     return {
-        .is_tegra = device->is_tegra,
+        .tegra_layout = device->tegra_layout,
     };
 }
 

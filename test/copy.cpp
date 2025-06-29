@@ -146,6 +146,8 @@ TEST_F(CopyTest, MemsetFromVa) {
     EXPECT_EQ(XXH64(envideo_map_get_cpu_addr(map), envideo_map_get_size(map), 0), 0x0da2d6cadfbe565f);
 
     EXPECT_EQ(envideo_map_destroy(map), 0);
+
+    operator delete[] (mem, std::align_val_t(align));
 }
 
 TEST_F(CopyTest, Memcpy) {
@@ -185,7 +187,7 @@ TEST_F(CopyTest, Memcpy) {
     EXPECT_EQ(envideo_map_cache_op(dst, 0, envideo_map_get_size(dst), EnvideoCache_Invalidate), 0);
     EXPECT_EQ(envideo_fence_wait(dev, fence, 5e6), 0);
 
-    // In : xxhash.xxh64_hexdigest(b"\xaa" * 0x100000)
+    // In : xxhash.xxh64_hexdigest(b"\x11" * 0x100000)
     // Out: '8b16293e51d6e10c'
     EXPECT_EQ(XXH64(envideo_map_get_cpu_addr(dst), envideo_map_get_size(dst), 0), 0x8b16293e51d6e10c);
 
@@ -257,7 +259,7 @@ TEST_F(CopyTest, Image) {
     EXPECT_EQ(envideo_map_cache_op(dst, 0, envideo_map_get_size(dst), EnvideoCache_Invalidate), 0);
     EXPECT_EQ(envideo_fence_wait(dev, fence, 5e6), 0);
 
-    // In : xxhash.xxh64_hexdigest(b"\xa" * 1920 * 1080)
+    // In : xxhash.xxh64_hexdigest(b"\xaa" * 1920 * 1080)
     // Out: '538a2a80c0e10548'
     EXPECT_EQ(XXH64(envideo_map_get_cpu_addr(dst), size, 0), 0x538a2a80c0e10548);
 

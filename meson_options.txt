@@ -1,3 +1,6 @@
 option('nvidia',  type: 'feature', value: 'disabled')
 option('nvgpu',   type: 'feature', value: 'disabled')
 option('tests',   type: 'boolean', value: false)
+
+option('tegra-drm', type: 'boolean', value: true,
+    description: 'Use Tegra DRM UAPI with nvgpu kernel driver')

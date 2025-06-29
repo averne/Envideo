@@ -51,6 +51,10 @@ enum host1x_class {
 #define NV_THI_INCR_SYNCPT_COND                                            15:8
 #define NV_THI_INCR_SYNCPT_COND_IMMEDIATE                                  (0x00000000)
 #define NV_THI_INCR_SYNCPT_COND_OP_DONE                                    (0x00000001)
+#define NV_THI_INCR_SYNCPT_INDX6                                           9:0
+#define NV_THI_INCR_SYNCPT_COND6                                           17:10
+#define NV_THI_INCR_SYNCPT_COND6_IMMEDIATE                                 (0x00000000)
+#define NV_THI_INCR_SYNCPT_COND6_OP_DONE                                   (0x00000001)
 #define NV_THI_INCR_SYNCPT_ERR                                             (0x00000008)
 #define NV_THI_INCR_SYNCPT_ERR_COND_STS_IMM                                0:0
 #define NV_THI_INCR_SYNCPT_ERR_COND_STS_OPDONE                             1:1

@@ -156,7 +156,7 @@ typedef struct EnvideoCmdbuf  EnvideoCmdbuf;
 typedef uint64_t              EnvideoFence;
 
 typedef struct {
-    bool     is_tegra;
+    bool     tegra_layout;
     uint64_t reserved[3];
 } EnvideoDeviceInfo;
 

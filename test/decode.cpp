@@ -52,8 +52,10 @@ struct DecodeTest: public testing::Test {
     }
 
     ~DecodeTest() {
+        envideo_cmdbuf_destroy (this->copy_cmdbuf);
         envideo_cmdbuf_destroy (this->cmdbuf);
         envideo_map_destroy    (this->cmdbuf_map);
+        envideo_channel_destroy(this->copy_chan);
         envideo_channel_destroy(this->chan);
         envideo_device_destroy (this->dev);
     }
@@ -108,7 +110,7 @@ TEST_F(DecodeTest, Mpeg2) {
 
     auto info = envideo_device_get_info(dev);
     auto *setup = reinterpret_cast<nvdec_mpeg2_pic_s *>(input_addr + setup_off);
-    setup->tileFormat = !info.is_tegra;
+    setup->tileFormat = !info.tegra_layout;
 
     EXPECT_EQ(envideo_cmdbuf_begin(cmdbuf, EnvideoEngine_Nvdec), 0);
     EXPECT_EQ(envideo_cmdbuf_push_value(cmdbuf, NVC9B0_SET_APPLICATION_ID,

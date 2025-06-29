@@ -64,11 +64,11 @@ TEST_P(EngineTest, Basic) {
             break;
         case EnvideoEngine_Copy:
         case EnvideoEngine_Nvdec:
-        case EnvideoEngine_Nvenc:
             // These engines should always be present
             EXPECT_EQ(envideo_channel_create(dev, &channel, engine), 0);
             EXPECT_EQ(envideo_channel_destroy(channel), 0);
             break;
+        case EnvideoEngine_Nvenc:
         case EnvideoEngine_Nvjpg:
         case EnvideoEngine_Ofa:
         case EnvideoEngine_Vic:

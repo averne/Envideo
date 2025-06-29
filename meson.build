@@ -9,17 +9,22 @@ project('envideo', ['c', 'cpp'],
         'cpp_std=gnu++20',
         'auto_features=enabled',
     ],
+    meson_version: '>=0.57.0',
     license: 'GPLv2+',
     version: '1.0.0',
 )
 
-lib_src = []
-lib_inc = []
-lib_dep = []
+lib_src  = []
+lib_inc  = []
+lib_uapi = []
+lib_dep  = []
+
+fs  = import('fs')
+cxx = meson.get_compiler('cpp')
 
 conf_data = configuration_data({
-    'CONFIG_NVIDIA':  get_option('nvidia') .enabled(),
-    'CONFIG_NVGPU':   get_option('nvgpu')  .enabled(),
+    'CONFIG_NVIDIA':  get_option('nvidia').enabled(),
+    'CONFIG_NVGPU':   get_option('nvgpu') .enabled(),
 })
 
 lib_inc += include_directories(
@@ -37,6 +42,20 @@ lib_src += files(
 )
 
 if get_option('nvgpu').enabled()
+    conf_data.set('CONFIG_TEGRA_DRM', get_option('tegra-drm'))
+
+    if fs.is_file('/etc/nv_tegra_release')
+        rel = fs.read('/etc/nv_tegra_release').substring(3, 5).to_int()
+        conf_data.set('CONFIG_LINUX_TEGRA_REL', rel)
+    endif
+
+    if fs.is_dir('/usr/src/nvidia/nvgpu')
+        lib_uapi += include_directories('/usr/src/nvidia/nvgpu/include/uapi/linux/')
+    endif
+    if fs.is_dir('/usr/src/nvidia/nvidia-oot')
+        lib_uapi += include_directories('/usr/src/nvidia/nvidia-oot/include/uapi/linux/')
+    endif
+
     lib_src += files('src/nvgpu/device.cpp', 'src/nvgpu/channel.cpp')
 endif
 
@@ -53,7 +72,7 @@ endif
 configure_file(output: 'config.h', configuration: conf_data)
 
 envideo_lib = library('envideo', lib_src,
-    include_directories: lib_inc,
+    include_directories: [lib_uapi, lib_inc],
     dependencies: lib_dep,
     install: true,
 )

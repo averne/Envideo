@@ -3,7 +3,7 @@ c = '/opt/devkitpro/devkitA64/bin/aarch64-none-elf-gcc'
 cpp = '/opt/devkitpro/devkitA64/bin/aarch64-none-elf-g++'
 ar = '/opt/devkitpro/devkitA64/bin/aarch64-none-elf-gcc-ar'
 strip = '/opt/devkitpro/devkitA64/bin/aarch64-none-elf-strip'
-pkgconfig = '/opt/devkitpro/portlibs/switch/bin/aarch64-none-elf-pkg-config'
+pkg-config = '/opt/devkitpro/portlibs/switch/bin/aarch64-none-elf-pkg-config'
 
 [built-in options]
 c_args = ['-D__SWITCH__','-D_GNU_SOURCE','-D_POSIX_VERSION=200809L','-I/opt/devkitpro/portlibs/switch/include','-isystem','/opt/devkitpro/libnx/include','-march=armv8-a+crc+crypto','-mtune=cortex-a57','-mtp=soft','-fPIC','-ftls-model=local-exec','-O2','-ffunction-sections','-fdata-sections']
