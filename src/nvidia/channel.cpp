@@ -133,8 +133,8 @@ int Channel::initialize() {
     ENVID_CHECK(d.nvrm_alloc(d.device, this->gpfifo, gpfifo_cl, NV_CHANNEL_ALLOC_PARAMS{
         .gpFifoOffset  = this->entries.gpu_addr_pitch,
         .gpFifoEntries = static_cast<std::uint32_t>(Channel::num_cmdlists),
-        .hUserdMemory  = this->userd.object.handle,
-        .userdOffset   = 0,
+        .hUserdMemory  = { this->userd.object.handle },
+        .userdOffset   = { 0 },
         .engineType    = this->engine_type,
     }));
 

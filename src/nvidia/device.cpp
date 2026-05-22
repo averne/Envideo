@@ -386,6 +386,14 @@ int Device::initialize() {
     this->classes.resize(class_list.numClasses);
     std::ranges::copy(std::span(class_list.classList, class_list.numClasses), this->classes.begin());
 
+    // Sort available classes in descending order of type (bit 0-7), and version (bits 8-15).
+    // This allows us to find the most recent class for a given type with just a linear search.
+    std::ranges::sort(this->classes, [](auto lhs, auto rhs) {
+        auto lhs_type = (lhs >> 0) & 0xff, rhs_type = (rhs >> 0) & 0xff,
+             lhs_ver  = (lhs >> 8) & 0xff, rhs_ver  = (rhs >> 8) & 0xff;
+        return (lhs_type == rhs_type) ? lhs_ver > rhs_ver : lhs_type > rhs_type;
+    });
+
     auto usermode_cl = this->find_class(0x61), gpfifo_cl = this->find_class(0x6f);
     if (!usermode_cl || !gpfifo_cl)
         return ENVIDEO_RC_SYSTEM(ENOSYS);
