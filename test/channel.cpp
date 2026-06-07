@@ -83,7 +83,7 @@ TEST_P(EngineTest, Basic) {
     }
 }
 
-INSTANTIATE_TEST_CASE_P(AllEngine, EngineTest,
+INSTANTIATE_TEST_SUITE_P(AllEngine, EngineTest,
     ::testing::ValuesIn({EnvideoEngine_Host,
                          EnvideoEngine_Copy,  EnvideoEngine_Nvdec, EnvideoEngine_Nvenc,
                          EnvideoEngine_Nvjpg, EnvideoEngine_Ofa,   EnvideoEngine_Vic})

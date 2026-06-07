@@ -84,7 +84,7 @@ TEST_P(ContraintsTest, Basic) {
     }
 }
 
-INSTANTIATE_TEST_CASE_P(ContraintsCombinations, ContraintsTest,
+INSTANTIATE_TEST_SUITE_P(ContraintsCombinations, ContraintsTest,
     ::testing::Combine(
         ::testing::ValuesIn({EnvideoCodec_Mjpeg, EnvideoCodec_Mpeg1, EnvideoCodec_Mpeg2, EnvideoCodec_Mpeg4, EnvideoCodec_Vc1,
                              EnvideoCodec_H264,  EnvideoCodec_H265,  EnvideoCodec_Vp8,   EnvideoCodec_Vp9,   EnvideoCodec_Av1}),

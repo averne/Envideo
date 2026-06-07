@@ -201,7 +201,7 @@ TEST_P(FlagTest, FromVa) {
     operator delete[] (mem, std::align_val_t(align));
 }
 
-INSTANTIATE_TEST_CASE_P(FlagCombinations, FlagTest,
+INSTANTIATE_TEST_SUITE_P(FlagCombinations, FlagTest,
     ::testing::Combine(
         ::testing::ValuesIn({EnvideoMap_CpuCacheable, EnvideoMap_CpuWriteCombine,  EnvideoMap_CpuUncacheable, EnvideoMap_CpuUnmapped}),
         ::testing::ValuesIn({EnvideoMap_GpuCacheable, EnvideoMap_GpuUncacheable,   EnvideoMap_GpuUnmapped                           }),
