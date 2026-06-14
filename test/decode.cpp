@@ -20,7 +20,10 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <atomic>
+#include <thread>
 #include <tuple>
+#include <vector>
 
 #include <xxhash.h>
 #include <gtest/gtest.h>
@@ -33,9 +36,25 @@
 
 #include "common.hpp"
 
-struct DecodeTest: public testing::Test {
-    DecodeTest() {
-        envideo_device_create(&this->dev);
+extern std::uint8_t pic_setup_bin[],         bitstream_bin[],          slice_offsets_bin[];
+std::size_t         pic_setup_bin_len = 344, bitstream_bin_len = 6426, slice_offsets_bin_len = 32;
+
+std::uint32_t frame_width = 128, frame_height = 128;
+std::uint32_t frame_size = frame_width * frame_height + frame_width * frame_height / 2,
+    luma_off = 0, chroma_off = frame_width * frame_height;
+
+#define ALIGN(x, a) (((x) + (a) - 1) & ~((a) - 1))
+#define ALIGN_MAP(x) ALIGN(x, ENVIDEO_MAP_ALIGN)
+
+std::size_t status_off = 0, setup_off = ALIGN_MAP(status_off + sizeof(nvdec_status_s)),
+    bitstream_off = ALIGN_MAP(setup_off + sizeof(nvdec_mpeg2_pic_s)),
+    sliceoffs_off = ALIGN_MAP(bitstream_off + bitstream_bin_len),
+    input_size    = ALIGN(sliceoffs_off, 0x1000);
+
+struct DecodeContext {
+    void initialize(EnvideoDevice *device) {
+        this->dev = device;
+
         envideo_map_create(this->dev, &this->cmdbuf_map, 0x10000, 0x1000,
             static_cast<EnvideoMapFlags>(EnvideoMap_CpuWriteCombine | EnvideoMap_GpuUncacheable |
                                          EnvideoMap_LocationHost    | EnvideoMap_UsageCmdbuf));
@@ -49,108 +68,98 @@ struct DecodeTest: public testing::Test {
         auto size = envideo_map_get_size(this->cmdbuf_map);
         envideo_cmdbuf_add_memory(this->cmdbuf,      this->cmdbuf_map, 0,        size / 2);
         envideo_cmdbuf_add_memory(this->copy_cmdbuf, this->cmdbuf_map, size / 2, size / 2);
+
+        EnvideoMapFlags flags;
+
+        flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuWriteCombine | EnvideoMap_GpuCacheable |
+                                             EnvideoMap_LocationDevice  | EnvideoMap_UsageEngine);
+        envideo_map_create(this->dev, &this->input_map, input_size, 0x1000, flags);
+        envideo_map_pin(this->input_map, this->chan);
+
+        flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuUnmapped    | EnvideoMap_GpuCacheable |
+                                             EnvideoMap_LocationDevice | EnvideoMap_UsageFramebuffer);
+        envideo_map_create(this->dev, &this->frame, frame_size, 0x1000, flags);
+        envideo_map_pin(this->frame, this->chan);
+        envideo_map_pin(this->frame, this->copy_chan);
+
+        flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuCacheable | EnvideoMap_GpuCacheable |
+                                             EnvideoMap_LocationHost | EnvideoMap_UsageFramebuffer);
+        envideo_map_create(this->dev, &this->result, frame_size, 0x1000, flags);
+        envideo_map_pin(this->result, this->copy_chan);
     }
 
-    ~DecodeTest() {
+    void finalize() {
+        envideo_map_destroy    (this->frame);
+        envideo_map_destroy    (this->input_map);
+        envideo_map_destroy    (this->result);
         envideo_cmdbuf_destroy (this->copy_cmdbuf);
         envideo_cmdbuf_destroy (this->cmdbuf);
         envideo_map_destroy    (this->cmdbuf_map);
         envideo_channel_destroy(this->copy_chan);
         envideo_channel_destroy(this->chan);
-        envideo_device_destroy (this->dev);
     }
 
     EnvideoDevice  *dev        = nullptr;
-    EnvideoMap     *cmdbuf_map = nullptr;
+    EnvideoMap     *cmdbuf_map = nullptr, *input_map = nullptr, *frame = nullptr, *result = nullptr;
     EnvideoChannel *chan       = nullptr, *copy_chan   = nullptr;
     EnvideoCmdbuf  *cmdbuf     = nullptr, *copy_cmdbuf = nullptr;
 };
 
-extern std::uint8_t pic_setup_bin[],         bitstream_bin[],          slice_offsets_bin[];
-std::size_t         pic_setup_bin_len = 344, bitstream_bin_len = 6426, slice_offsets_bin_len = 32;
-
-std::uint32_t frame_width = 128, frame_height = 128;
-std::uint32_t frame_size = frame_width * frame_height + frame_width * frame_height / 2,
-    luma_off = 0, chroma_off = frame_width * frame_height;
-
-#define ALIGN(x, a) (((x) + (a) - 1) & ~((a) - 1))
-#define ALIGN_MAP(x) ALIGN(x, ENVIDEO_MAP_ALIGN)
-
-TEST_F(DecodeTest, Mpeg2) {
-    std::size_t status_off = 0, setup_off = ALIGN_MAP(status_off + sizeof(nvdec_status_s)),
-        bitstream_off = ALIGN_MAP(setup_off + sizeof(nvdec_mpeg2_pic_s)),
-        sliceoffs_off = ALIGN_MAP(bitstream_off + bitstream_bin_len),
-        size = ALIGN(sliceoffs_off, 0x1000), align = 0x1000;
-
-    EnvideoMapFlags flags;
-
-    EnvideoMap *input_map, *frame, *result;
+void decode_mpeg2(DecodeContext &context) {
     EnvideoFence decode_fence, copy_fence;
 
-    flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuWriteCombine | EnvideoMap_GpuCacheable |
-                                         EnvideoMap_LocationDevice  | EnvideoMap_UsageEngine);
-    EXPECT_EQ(envideo_map_create(dev, &input_map, size, align, flags), 0);
-    EXPECT_EQ(envideo_map_pin(input_map, chan), 0);
+    EXPECT_EQ(envideo_cmdbuf_clear(context.cmdbuf),      0);
+    EXPECT_EQ(envideo_cmdbuf_clear(context.copy_cmdbuf), 0);
 
-    flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuUnmapped    | EnvideoMap_GpuCacheable |
-                                         EnvideoMap_LocationDevice | EnvideoMap_UsageFramebuffer);
-    EXPECT_EQ(envideo_map_create(dev, &frame, frame_size, align, flags), 0);
-    EXPECT_EQ(envideo_map_pin(frame, chan),      0);
-    EXPECT_EQ(envideo_map_pin(frame, copy_chan), 0);
-
-    flags = static_cast<EnvideoMapFlags>(EnvideoMap_CpuCacheable | EnvideoMap_GpuCacheable |
-                                         EnvideoMap_LocationHost | EnvideoMap_UsageFramebuffer);
-    EXPECT_EQ(envideo_map_create(dev, &result, frame_size, align, flags), 0);
-    EXPECT_EQ(envideo_map_pin(result, copy_chan), 0);
-
-    std::uint8_t *input_addr = static_cast<std::uint8_t *>(envideo_map_get_cpu_addr(input_map));
+    std::uint8_t *input_addr = static_cast<std::uint8_t *>(envideo_map_get_cpu_addr(context.input_map));
+    EXPECT_NE(input_addr, nullptr);
     std::memcpy(input_addr + setup_off,     pic_setup_bin,     pic_setup_bin_len);
     std::memcpy(input_addr + bitstream_off, bitstream_bin,     bitstream_bin_len);
     std::memcpy(input_addr + sliceoffs_off, slice_offsets_bin, slice_offsets_bin_len);
 
-    auto info = envideo_device_get_info(dev);
+    auto info = envideo_device_get_info(context.dev);
     auto *setup = reinterpret_cast<nvdec_mpeg2_pic_s *>(input_addr + setup_off);
     setup->tileFormat = !info.tegra_layout;
 
-    EXPECT_EQ(envideo_cmdbuf_begin(cmdbuf, EnvideoEngine_Nvdec), 0);
-    EXPECT_EQ(envideo_cmdbuf_push_value(cmdbuf, NVC9B0_SET_APPLICATION_ID,
+    EXPECT_EQ(envideo_cmdbuf_begin(context.cmdbuf, EnvideoEngine_Nvdec), 0);
+    EXPECT_EQ(envideo_cmdbuf_push_value(context.cmdbuf, NVC9B0_SET_APPLICATION_ID,
         DRF_DEF(C9B0, _SET_APPLICATION_ID, _ID, _MPEG12)), 0);
-    EXPECT_EQ(envideo_cmdbuf_push_value(cmdbuf, NVC9B0_SET_PICTURE_INDEX, 0), 0);
-    EXPECT_EQ(envideo_cmdbuf_push_value(cmdbuf, NVC9B0_SET_CONTROL_PARAMS,
+    EXPECT_EQ(envideo_cmdbuf_push_value(context.cmdbuf, NVC9B0_SET_PICTURE_INDEX, 0), 0);
+    EXPECT_EQ(envideo_cmdbuf_push_value(context.cmdbuf, NVC9B0_SET_CONTROL_PARAMS,
         DRF_DEF(C9B0, _SET_CONTROL_PARAMS, _CODEC_TYPE,     _MPEG2) |
         DRF_NUM(C9B0, _SET_CONTROL_PARAMS, _GPTIMER_ON,     1)      |
         DRF_NUM(C9B0, _SET_CONTROL_PARAMS, _ERR_CONCEAL_ON, 1)      |
         DRF_NUM(C9B0, _SET_CONTROL_PARAMS, _MBTIMER_ON,     1)
     ), 0);
 
-    EXPECT_EQ(envideo_cmdbuf_push_reloc(cmdbuf, NVC9B0_SET_DRV_PIC_SETUP_OFFSET,
-            input_map, setup_off,     EnvideoRelocType_Default, 8), 0);
-    EXPECT_EQ(envideo_cmdbuf_push_reloc(cmdbuf, NVC9B0_SET_IN_BUF_BASE_OFFSET,
-            input_map, bitstream_off, EnvideoRelocType_Default, 8), 0);
-    EXPECT_EQ(envideo_cmdbuf_push_reloc(cmdbuf, NVC9B0_SET_SLICE_OFFSETS_BUF_OFFSET,
-            input_map, sliceoffs_off, EnvideoRelocType_Default, 8), 0);
-    EXPECT_EQ(envideo_cmdbuf_push_reloc(cmdbuf, NVC9B0_SET_NVDEC_STATUS_OFFSET,
-            input_map, status_off,    EnvideoRelocType_Default, 8), 0);
+    EXPECT_EQ(envideo_cmdbuf_push_reloc(context.cmdbuf, NVC9B0_SET_DRV_PIC_SETUP_OFFSET,
+            context.input_map, setup_off,     EnvideoRelocType_Default, 8), 0);
+    EXPECT_EQ(envideo_cmdbuf_push_reloc(context.cmdbuf, NVC9B0_SET_IN_BUF_BASE_OFFSET,
+            context.input_map, bitstream_off, EnvideoRelocType_Default, 8), 0);
+    EXPECT_EQ(envideo_cmdbuf_push_reloc(context.cmdbuf, NVC9B0_SET_SLICE_OFFSETS_BUF_OFFSET,
+            context.input_map, sliceoffs_off, EnvideoRelocType_Default, 8), 0);
+    EXPECT_EQ(envideo_cmdbuf_push_reloc(context.cmdbuf, NVC9B0_SET_NVDEC_STATUS_OFFSET,
+            context.input_map, status_off,    EnvideoRelocType_Default, 8), 0);
 
-    EXPECT_EQ(envideo_cmdbuf_push_reloc(cmdbuf, NVC9B0_SET_PICTURE_LUMA_OFFSET0,
-            frame, luma_off,   EnvideoRelocType_Tiled, 8), 0);
-    EXPECT_EQ(envideo_cmdbuf_push_reloc(cmdbuf, NVC9B0_SET_PICTURE_CHROMA_OFFSET0,
-            frame, chroma_off, EnvideoRelocType_Tiled, 8), 0);
+    EXPECT_EQ(envideo_cmdbuf_push_reloc(context.cmdbuf, NVC9B0_SET_PICTURE_LUMA_OFFSET0,
+            context.frame, luma_off,   EnvideoRelocType_Tiled, 8), 0);
+    EXPECT_EQ(envideo_cmdbuf_push_reloc(context.cmdbuf, NVC9B0_SET_PICTURE_CHROMA_OFFSET0,
+            context.frame, chroma_off, EnvideoRelocType_Tiled, 8), 0);
 
-    EXPECT_EQ(envideo_cmdbuf_push_value(cmdbuf, NVC9B0_EXECUTE,
+    EXPECT_EQ(envideo_cmdbuf_push_value(context.cmdbuf, NVC9B0_EXECUTE,
         DRF_DEF(C9B0, _EXECUTE, _NOTIFY, _DISABLE) |
         DRF_DEF(C9B0, _EXECUTE, _AWAKEN, _ENABLE)
     ), 0);
-    EXPECT_EQ(envideo_cmdbuf_end(cmdbuf), 0);
+    EXPECT_EQ(envideo_cmdbuf_end(context.cmdbuf), 0);
 
-    EXPECT_EQ(envideo_channel_submit(chan, cmdbuf, &decode_fence), 0);
+    EXPECT_EQ(envideo_channel_submit(context.chan, context.cmdbuf, &decode_fence), 0);
 
-    EXPECT_EQ(envideo_cmdbuf_begin(copy_cmdbuf, EnvideoEngine_Host), 0);
-    EXPECT_EQ(envideo_cmdbuf_wait_fence(copy_cmdbuf, decode_fence), 0);
-    EXPECT_EQ(envideo_cmdbuf_end(copy_cmdbuf), 0);
+    EXPECT_EQ(envideo_cmdbuf_begin(context.copy_cmdbuf, EnvideoEngine_Host), 0);
+    EXPECT_EQ(envideo_cmdbuf_wait_fence(context.copy_cmdbuf, decode_fence), 0);
+    EXPECT_EQ(envideo_cmdbuf_end(context.copy_cmdbuf), 0);
 
     EnvideoSurfaceInfo luma_src_info = {
-        .map        = frame,
+        .map        = context.frame,
         .map_offset = luma_off,
         .width      = frame_width,
         .height     = frame_height,
@@ -158,16 +167,16 @@ TEST_F(DecodeTest, Mpeg2) {
         .tiled      = true,
         .gob_height = 2,
     }, luma_dst_info = {
-        .map        = result,
+        .map        = context.result,
         .map_offset = luma_off,
         .width      = frame_width,
         .height     = frame_height,
         .stride     = frame_width,
     };
-    EXPECT_EQ(envideo_surface_transfer(copy_cmdbuf, &luma_src_info, &luma_dst_info), 0);
+    EXPECT_EQ(envideo_surface_transfer(context.copy_cmdbuf, &luma_src_info, &luma_dst_info), 0);
 
     EnvideoSurfaceInfo chroma_src_info = {
-        .map        = frame,
+        .map        = context.frame,
         .map_offset = chroma_off,
         .width      = frame_width,
         .height     = frame_height / 2,
@@ -175,24 +184,24 @@ TEST_F(DecodeTest, Mpeg2) {
         .tiled      = true,
         .gob_height = 2,
     }, chroma_dst_info = {
-        .map        = result,
+        .map        = context.result,
         .map_offset = chroma_off,
         .width      = frame_width,
         .height     = frame_height / 2,
         .stride     = frame_width,
         .tiled      = false,
     };
-    EXPECT_EQ(envideo_surface_transfer(copy_cmdbuf, &chroma_src_info, &chroma_dst_info), 0);
+    EXPECT_EQ(envideo_surface_transfer(context.copy_cmdbuf, &chroma_src_info, &chroma_dst_info), 0);
 
-    EXPECT_EQ(envideo_cmdbuf_begin(copy_cmdbuf, EnvideoEngine_Host), 0);
-    EXPECT_EQ(envideo_cmdbuf_cache_op(copy_cmdbuf, EnvideoCache_Writeback), 0);
-    EXPECT_EQ(envideo_cmdbuf_end(copy_cmdbuf), 0);
+    EXPECT_EQ(envideo_cmdbuf_begin(context.copy_cmdbuf, EnvideoEngine_Host), 0);
+    EXPECT_EQ(envideo_cmdbuf_cache_op(context.copy_cmdbuf, EnvideoCache_Writeback), 0);
+    EXPECT_EQ(envideo_cmdbuf_end(context.copy_cmdbuf), 0);
 
-    EXPECT_EQ(envideo_channel_submit(copy_chan, copy_cmdbuf, &copy_fence), 0);
-    EXPECT_EQ(envideo_map_cache_op(result, 0, envideo_map_get_size(result), EnvideoCache_Invalidate), 0);
-    EXPECT_EQ(envideo_fence_wait(dev, copy_fence, 5e6), 0);
+    EXPECT_EQ(envideo_channel_submit(context.copy_chan, context.copy_cmdbuf, &copy_fence), 0);
+    EXPECT_EQ(envideo_map_cache_op(context.result, 0, envideo_map_get_size(context.result), EnvideoCache_Invalidate), 0);
+    EXPECT_EQ(envideo_fence_wait(context.dev, copy_fence, 5e6), 0);
 
-    auto *status = static_cast<nvdec_status_s *>(envideo_map_get_cpu_addr(input_map));
+    auto *status = static_cast<nvdec_status_s *>(envideo_map_get_cpu_addr(context.input_map));
     EXPECT_EQ(status->error_status,          0);
     EXPECT_EQ(status->mbs_correctly_decoded, (frame_width / 16) * (frame_height / 16));
     EXPECT_EQ(status->mbs_in_error,          0);
@@ -200,11 +209,68 @@ TEST_F(DecodeTest, Mpeg2) {
 
     // ffmpeg -hwaccel nvdec -i testsrc2.mpg -frames:v 1 -pix_fmt nv12 -f rawvideo - | xxh64sum
     // a2c4a330592602d5  stdin
-    EXPECT_EQ(XXH64(envideo_map_get_cpu_addr(result), envideo_map_get_size(result), 0), 0xa2c4a330592602d5);
+    EXPECT_EQ(XXH64(envideo_map_get_cpu_addr(context.result), envideo_map_get_size(context.result), 0), 0xa2c4a330592602d5);
+}
 
-    EXPECT_EQ(envideo_map_destroy(frame),     0);
-    EXPECT_EQ(envideo_map_destroy(input_map), 0);
-    EXPECT_EQ(envideo_map_destroy(result),    0);
+struct DecodeTest: public testing::Test {
+    DecodeTest() {
+        envideo_device_create(&this->dev);
+        this->context.initialize(this->dev);
+    }
+
+    ~DecodeTest() {
+        this->context.finalize();
+        envideo_device_destroy(this->dev);
+    }
+
+    EnvideoDevice *dev = nullptr;
+    DecodeContext  context = {};
+};
+
+TEST_F(DecodeTest, Mpeg2) {
+    decode_mpeg2(this->context);
+}
+
+struct DecodeStressTest: public testing::Test {
+    constexpr static auto num_threads = 32;
+    constexpr static auto iterations  = 256;
+
+    DecodeStressTest() {
+        envideo_device_create(&this->dev);
+
+        this->workers.resize(num_threads);
+        for (auto &worker: this->workers)
+            worker.initialize(this->dev);
+    }
+
+    ~DecodeStressTest() {
+        for (auto &worker: this->workers)
+            worker.finalize();
+        envideo_device_destroy(this->dev);
+    }
+
+    EnvideoDevice *dev = nullptr;
+    std::vector<DecodeContext> workers = {};
+};
+
+TEST_F(DecodeStressTest, Mpeg2Stress) {
+    std::atomic_bool start = false;
+    std::vector<std::thread> threads;
+    threads.reserve(num_threads);
+
+    for (auto &worker: this->workers) {
+        threads.emplace_back([&start, &worker] {
+            while (!start.load(std::memory_order_acquire))
+                std::this_thread::yield();
+
+            for (auto i = 0; i < iterations; ++i)
+                decode_mpeg2(worker);
+        });
+    }
+
+    start.store(true, std::memory_order_release);
+    for (auto &thread: threads)
+        thread.join();
 }
 
 std::uint8_t pic_setup_bin[] = {

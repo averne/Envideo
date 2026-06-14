@@ -91,7 +91,7 @@ TEST_F(CmdbufTest, Limit) {
 
     EXPECT_EQ(envideo_cmdbuf_begin(cmdbuf, EnvideoEngine_Host), 0);
 
-    // We created a copy channel, which hosted by the gpfifo engine on all platforms
+    // We created a copy channel, which is hosted by the gpfifo engine on all platforms
     // We should be able to write precisely the number of dwords that we reserved for the command buffer,
     // because it should not sneak in extraneous SetClass/other commands that would disrupt our count
     // This would not work on eg. a host1x channel on HOS
