@@ -269,7 +269,7 @@ int Device::register_event(std::uint32_t notifier_type) {
 
     ENVID_CHECK(this->nvrm_control(this->subdevice, NV2080_CTRL_CMD_EVENT_SET_NOTIFICATION, NV2080_CTRL_EVENT_SET_NOTIFICATION_PARAMS{
         .event  = notifier_type,
-        .action = NV2080_CTRL_EVENT_SET_NOTIFICATION_ACTION_SINGLE,
+        .action = NV2080_CTRL_EVENT_SET_NOTIFICATION_ACTION_REPEAT,
     }));
 
     return 0;
@@ -494,28 +494,28 @@ int Device::wait(envid::Fence fence, std::uint64_t timeout_us) {
     if (!this->check_channel_idx(idx))
         return ENVIDEO_RC_SYSTEM(EINVAL);
 
-    // Convert to milliseconds
-    std::int64_t timeout = timeout_us / 1000;
-
     struct pollfd p = {
         .fd     = this->os_event_fd,
         .events = POLLIN | POLLPRI,
     };
 
-    auto start = std::chrono::steady_clock::now();
+    auto timeout = std::chrono::steady_clock::now() + std::chrono::microseconds(timeout_us);
     while (true) {
         if (this->poll_internal(fence))
             break;
 
-        auto rc = ::poll(&p, 1, 100);
-        if (rc < 0)
-            return ENVIDEO_RC_SYSTEM(errno);
-
-        timeout -= std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
-        timeout  = std::max(timeout, INT64_C(0));
-
-        if (!timeout)
+        auto now = std::chrono::steady_clock::now();
+        if (now >= timeout)
             return ENVIDEO_RC_SYSTEM(ETIMEDOUT);
+
+        auto poll_timeout = std::chrono::duration_cast<std::chrono::milliseconds>(timeout - now);
+        auto rc = ::poll(&p, 1, static_cast<int>(poll_timeout.count()));
+        if (rc < 0) {
+            if (errno == EINTR)
+                continue;
+            else
+                return ENVIDEO_RC_SYSTEM(errno);
+        }
     }
 
     return 0;
