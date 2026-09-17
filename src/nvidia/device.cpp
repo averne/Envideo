@@ -190,6 +190,32 @@ std::uint32_t get_alloc_flags(EnvideoMapFlags flags, std::uint32_t *attr, std::u
     return res | NVOS32_ALLOC_FLAGS_ALIGNMENT_FORCE | NVOS32_ALLOC_FLAGS_MAP_NOT_REQUIRED;
 }
 
+bool check_engine_type(EnvideoEngine engine, std::uint32_t type) {
+    switch (engine) {
+        case EnvideoEngine_Host:  return type == NV2080_ENGINE_TYPE_HOST;
+        case EnvideoEngine_Copy:  return NV2080_ENGINE_TYPE_IS_COPY  (type);
+        case EnvideoEngine_Nvdec: return NV2080_ENGINE_TYPE_IS_NVDEC (type);
+        case EnvideoEngine_Nvenc: return NV2080_ENGINE_TYPE_IS_NVENC (type);
+        case EnvideoEngine_Nvjpg: return NV2080_ENGINE_TYPE_IS_NVJPEG(type);
+        case EnvideoEngine_Ofa:   return NV2080_ENGINE_TYPE_IS_OFA   (type);
+        case EnvideoEngine_Vic:   return type == NV2080_ENGINE_TYPE_VIC;
+        default: return false;
+    }
+}
+
+std::uint32_t get_engine_instance(EnvideoEngine engine, std::uint32_t type) {
+    switch (engine) {
+        case EnvideoEngine_Host:  return 0;
+        case EnvideoEngine_Copy:  return NV2080_ENGINE_TYPE_COPY_IDX  (type);
+        case EnvideoEngine_Nvdec: return NV2080_ENGINE_TYPE_NVDEC_IDX (type);
+        case EnvideoEngine_Nvenc: return NV2080_ENGINE_TYPE_NVENC_IDX (type);
+        case EnvideoEngine_Nvjpg: return NV2080_ENGINE_TYPE_NVJPEG_IDX(type);
+        case EnvideoEngine_Ofa:   return NV2080_ENGINE_TYPE_OFA_IDX   (type);
+        case EnvideoEngine_Vic:   return 0;
+        default: return -1;
+    }
+}
+
 } // namespace
 
 int Device::nvrm_alloc(int fd, const Object &parent, Object &obj, std::uint32_t cl,
@@ -285,6 +311,31 @@ int Device::unregister_event(std::uint32_t notifier_type) {
     }));
 
     return 0;
+}
+
+int Device::find_engine(EnvideoEngine engine, std::uint32_t &engine_type, std::uint32_t &instance) const {
+    for (auto type: this->engines) {
+        if (!check_engine_type(engine, type))
+            continue;
+
+        switch (engine) {
+            case EnvideoEngine_Copy: {
+                // Skip graphics copy engines
+                NV2080_CTRL_CE_GET_CAPS_V2_PARAMS caps = { .ceEngineType = type };
+                ENVID_CHECK(this->nvrm_control(this->subdevice, NV2080_CTRL_CMD_CE_GET_CAPS_V2, caps));
+                if (NV2080_CTRL_CE_GET_CAP(caps.capsTbl, NV2080_CTRL_CE_CAPS_CE_GRCE))
+                    continue;
+            }
+            default:
+                break;
+        }
+
+        engine_type = type;
+        instance    = get_engine_instance(engine, type);
+        return 0;
+    }
+
+    return ENVIDEO_RC_SYSTEM(ENOSYS);
 }
 
 int Device::get_class_id(std::uint32_t engine_type, std::uint32_t &cl) const {
@@ -424,11 +475,12 @@ int Device::initialize() {
     ENVID_CHECK(this->semaphores.initialize(0x1000, this->page_size));
 
     // Query capabilities
-    std::uint32_t nvdec_cl;
-    ENVID_CHECK(this->get_class_id(NV2080_ENGINE_TYPE_NVDEC(0), nvdec_cl));
+    std::uint32_t nvdec_cl, nvdec_engine, nvdec_instance;
+    ENVID_CHECK(this->find_engine(EnvideoEngine_Nvdec, nvdec_engine, nvdec_instance));
+    ENVID_CHECK(this->get_class_id(nvdec_engine, nvdec_cl));
     this->nvdec_version = get_nvdec_version(nvdec_cl);
 
-    NV0080_CTRL_BSP_GET_CAPS_PARAMS_V2 nvdec_caps = { .instanceId = 0 };
+    NV0080_CTRL_BSP_GET_CAPS_PARAMS_V2 nvdec_caps = { .instanceId = nvdec_instance };
     ENVID_CHECK(this->nvrm_control(this->device, NV0080_CTRL_CMD_BSP_GET_CAPS_V2, nvdec_caps));
 
     if (!(nvdec_caps.capsTbl[0] & util::bit(0))) {

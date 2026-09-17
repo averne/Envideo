@@ -47,19 +47,6 @@ namespace envid::nvidia {
 
 namespace {
 
-std::uint32_t get_engine_type(EnvideoEngine engine, std::uint32_t instance) {
-    switch (engine) {
-        case EnvideoEngine_Host:  return NV2080_ENGINE_TYPE_HOST; // ?
-        case EnvideoEngine_Copy:  return NV2080_ENGINE_TYPE_COPY  (instance);
-        case EnvideoEngine_Nvdec: return NV2080_ENGINE_TYPE_NVDEC (instance);
-        case EnvideoEngine_Nvenc: return NV2080_ENGINE_TYPE_NVENC (instance);
-        case EnvideoEngine_Nvjpg: return NV2080_ENGINE_TYPE_NVJPEG(instance);
-        case EnvideoEngine_Ofa:   return NV2080_ENGINE_TYPE_OFAn  (instance);
-        case EnvideoEngine_Vic:   return NV2080_ENGINE_TYPE_VIC;
-        default: return -1;
-    }
-}
-
 std::uint32_t get_notifier_type(EnvideoEngine engine, std::uint32_t instance) {
     switch (engine) {
         case EnvideoEngine_Copy:  return NV2080_NOTIFIERS_CE    (instance);
@@ -78,22 +65,9 @@ std::uint32_t get_notifier_type(EnvideoEngine engine, std::uint32_t instance) {
 int Channel::initialize() {
     auto &d = *reinterpret_cast<Device *>(this->device);
 
-    // If we are requested a copy channel, find the first asynchronous engine instance
-    std::uint32_t instance = 0;
-    if (this->engine == EnvideoEngine_Copy) {
-        for (;; ++instance) {
-            NV2080_CTRL_CE_GET_CAPS_V2_PARAMS caps = { .ceEngineType = NV2080_ENGINE_TYPE_COPY(instance) };
-            ENVID_CHECK(d.nvrm_control(d.subdevice, NV2080_CTRL_CMD_CE_GET_CAPS_V2, caps));
-            if (!NV2080_CTRL_CE_GET_CAP(caps.capsTbl, NV2080_CTRL_CE_CAPS_CE_GRCE))
-                break;
-        }
-    }
-
-    this->engine_type   = get_engine_type  (this->engine, instance);
+    std::uint32_t instance;
+    ENVID_CHECK(d.find_engine(this->engine, this->engine_type, instance));
     this->notifier_type = get_notifier_type(this->engine, instance);
-
-    if (this->engine_type == UINT32_C(-1))
-        return ENVIDEO_RC_SYSTEM(EINVAL);
 
     ENVID_CHECK(d.alloc_channel(this->channel_idx, this->engine_type));
 

@@ -165,6 +165,7 @@ class Device final: public envid::Device {
         }
 
         bool poll_internal(envid::Fence fence) const;
+        int find_engine(EnvideoEngine engine, std::uint32_t &engine_type, std::uint32_t &instance) const;
         int get_class_id(std::uint32_t engine_type, std::uint32_t &cl) const;
         int read_clocks(RUSD_CLK_PUBLIC_DOMAIN_INFOS &clk_info, bool update = false) const;
         void kickoff(std::uint32_t token) const;
