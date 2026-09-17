@@ -201,7 +201,7 @@ int GpfifoCmdbuf::cache_op(EnvideoCacheFlags flags) {
         word |= DRF_DEF(C76F, _MEM_OP_D, _OPERATION, _L2_SYSMEM_INVALIDATE);
 
     // Host wait-for-idle
-    ENVID_CHECK(this->push_value(NVC76F_SET_REFERENCE, 0));
+    ENVID_CHECK(this->push_value(NVC76F_WFI, 0));
 
     // Writes to MEM_OP_D must be preceded by MEM_OP_A/C (see dev_pbdma.ref.txt)
     ENVID_CHECK(this->push_value(NVC76F_MEM_OP_A, 0));
