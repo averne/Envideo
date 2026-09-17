@@ -78,6 +78,16 @@ constexpr auto mask(auto bit) {
     return (static_cast<decltype(bit)>(1) << bit) - 1;
 }
 
+static inline void mem_fence() {
+#if defined(__amd64__) || defined(_M_AMD64)
+    asm volatile("mfence" ::: "memory");
+#elif defined(__aarch64__) || defined(_M_ARM64)
+    asm volatile("dsb sy" ::: "memory");
+#else
+#error "Unsupported CPU architecture"
+#endif
+}
+
 static inline void write_fence() {
 #if defined(__amd64__) || defined(_M_AMD64)
     asm volatile("sfence" ::: "memory");

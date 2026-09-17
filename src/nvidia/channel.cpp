@@ -297,9 +297,15 @@ int Channel::submit(envid::Cmdbuf *cmdbuf, envid::Fence *fence) {
 
     auto *pb = static_cast<std::uint64_t *>(this->entries.cpu_addr);
     std::ranges::copy(c.entries, pb + prev_gpfifo_pos);
+    util::mem_fence();
 
     volatile auto *control = reinterpret_cast<AmpereAControlGPFifo *>(this->userd.cpu_addr);
     control->GPPut = gpfifo_pos;
+    util::write_fence();
+
+    // Enforce ordering between BAR1 writes and the the BAR0 kickoff, see:
+    // https://github.com/NVIDIA/open-gpu-kernel-modules/blob/61dcc93722ecb418bb5f2e00923f05b4b8051dd1/kernel-open/nvidia-uvm/uvm_turing_host.c#L229
+    util::unused(static_cast<std::uint32_t>(control->GPPut));
 
     d.kickoff(this->submit_token);
     util::write_fence();
